@@ -1,0 +1,18 @@
+{
+  "upstream": "https://github.com/dkerr64/Arduino-HomeKit-ESP8266.git",
+  "revision": "a917a7137b7366511ecfad788f00a8540257f752",
+  "files": {
+    "src/arduino_homekit_server.cpp": {
+      "before": "f0d15fba004410d60ff20cad285ce7e32403b42d5e4a865896e306fe0bd31bc4",
+      "after": "e13fefbf7758388991fb2388db41b4d9673d7d2359ae967d4ea6cb52f518a475"
+    },
+    "src/arduino_homekit_server.h": {
+      "before": "fa86563d156f700299ca6136f470470ce88f32657174fdd01931793fc7f48e40",
+      "after": "4cdead2108eb19287953a3c4959ce89e3ce86383127f0f013d95a7cc2f8099b8"
+    },
+    "src/homekit_event_queue.h": {
+      "before": null,
+      "after": "063fae78f944042e6d1edc322283842cdfc92ff6525801937bce8dfdde5c5d68"
+    }
+  }
+}

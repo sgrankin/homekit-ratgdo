@@ -1,0 +1,2 @@
+# Unified patches intentionally contain context lines with leading spaces/tabs.
+patches/**/*.patch -whitespace

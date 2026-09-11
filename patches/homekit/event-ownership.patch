@@ -1,0 +1,346 @@
+--- a/src/arduino_homekit_server.cpp
++++ b/src/arduino_homekit_server.cpp
+@@ -170,7 +170,9 @@
+ // client_context new and free
+ //============================
+ client_context_t* client_context_new(WiFiClient *wifiClient) {
+-	client_context_t *c = (client_context_t*) malloc(sizeof(client_context_t));
++	client_context_t *c = (client_context_t*) calloc(1, sizeof(client_context_t));
++	if (!c)
++		return NULL;
+ 	c->server = NULL;
+ 	c->endpoint_params = NULL;
+ 
+@@ -190,8 +192,12 @@
+ 
+ 	//c->event_queue = xQueueCreate(20, sizeof(characteristic_event_t*));
+ 	c->event_queue = (Queue_t*) malloc(sizeof(Queue_t));
+-	q_init(c->event_queue, sizeof(characteristic_event_t*),
+-	HOMEKIT_EVENT_QUEUE_SIZE, LIFO, true);
++	if (!c->event_queue || !q_init(c->event_queue, sizeof(characteristic_event_t*),
++	        HOMEKIT_EVENT_QUEUE_SIZE, FIFO, false)) {
++		free(c->event_queue);
++		free(c);
++		return NULL;
++	}
+ 
+ 	c->verify_context = NULL;
+ 
+@@ -210,8 +216,7 @@
+ 		pair_verify_context_free(c->verify_context);
+ 
+ 	if (c->event_queue) {
+-		//c->event_queue->clear();
+-		q_clean(c->event_queue);
++		homekit_event_queue_clear(c->event_queue);
+ 		q_kill(c->event_queue);
+ 		free(c->event_queue);
+ 	}
+@@ -678,29 +683,14 @@
+ 		CLIENT_DEBUG(client, "This value is set by this client, no need to send notification");
+ 		return;
+ 	}
+-	char * valstr;
+-	homekit_value_print(&valstr, &value);
+-	CLIENT_DEBUG(client, "Got characteristic %d.%d %s %s change event %s",
+-			ch->service->accessory->id, ch->id, ch->service->description, ch->description, valstr);
+-	free(valstr);
+-
+-	//DEBUG("Got characteristic %d.%d change event", ch->service->accessory->id, ch->id);
+-
+-	if (!client->event_queue) {
+-		ERROR("Client has no event queue. Skipping notification");
++	if (client->disconnect)
+ 		return;
+-	}
+-
+-	characteristic_event_t *event = (characteristic_event_t*) malloc(
+-			sizeof(characteristic_event_t));
+-	event->characteristic = ch;
+-	homekit_value_copy(&event->value, &value);
+-
+-	VERBOSE("Sending event to client %d", client->socket);
+-
+-	//xQueueSendToBack(client->event_queue, &event, 10);*/
+-	//q_push第二个参数要传指针地址
+-	q_push(client->event_queue, &event);
++	if (!client->event_queue || !homekit_event_enqueue(client->event_queue, ch, &value)) {
++		CLIENT_ERROR(client, "Cannot queue notification; reconnect for current state");
++		client->disconnect = true;
++		client->socket->stop();
++	}
++
+ }
+ 
+ void client_send(client_context_t *context, byte *data, size_t data_size) {
+@@ -3083,6 +3073,12 @@
+ 	}
+ 
+ 	client_context_t *context = client_context_new(wifiClient);
++	if (!context) {
++		ERROR("Not enough memory for HomeKit client");
++		wifiClient->stop();
++		delete wifiClient;
++		return NULL;
++	}
+ 	context->server = server;
+ 	context->socket = wifiClient;
+ 
+@@ -3098,86 +3094,38 @@
+ 
+ //设备向iPhone传递characteristic的消息
+ void homekit_server_process_notifications(homekit_server_t *server) {
+-	client_context_t *context = server->clients;
+-	// 把characteristic_event_t拼接成client_event_t链表
+-	// 按照Apple的规定，Notify消息需合并发送
+-	while (context) {
+-		if (context->step != HOMEKIT_CLIENT_STEP_PAIR_VERIFY_2OF2) {
+-			// Do not send event when the client is not verify over.
+-			context = context->next;
+-			continue;
+-		}
+-		characteristic_event_t *event = NULL;
+-		if (context->event_queue && q_pop(context->event_queue, &event)) {
+-			#if HOMEKIT_LOG_LEVEL >= HOMEKIT_LOG_DEBUG
+-			char * valstr;
+-			homekit_value_print(&valstr, &event->value);
+-			CLIENT_VERBOSE(context, "Sending characteristic %d.%d change notification %s",
+-					event->characteristic->service->accessory->id, event->characteristic->id, valstr);
+-			free(valstr);
+-			#endif
+-
+-			// Get and coalesce all client events
+-			client_event_t *events_head = (client_event_t*) malloc(sizeof(client_event_t));
+-			events_head->characteristic = event->characteristic;
+-			homekit_value_copy(&events_head->value, &event->value);
+-			events_head->next = NULL;
+-
+-			homekit_value_destruct(&event->value);
+-			free(event);
+-
+-			client_event_t *events_tail = events_head;
+-
+-			while (q_pop(context->event_queue, &event)) {
+-				#if HOMEKIT_LOG_LEVEL >= HOMEKIT_LOG_DEBUG
+-				homekit_value_print(&valstr, &event->value);
+-				CLIENT_DEBUG(context, "Sending characteristic %d.%d change notification %s",
+-						event->characteristic->service->accessory->id, event->characteristic->id, valstr);
+-				free(valstr);
+-				#endif
+-				//q_pop第二个参数必须传指针的地址
+-				//event = context->event_queue->shift();
+-				client_event_t *e = events_head;
+-				while (e) {
+-					if (e->characteristic == event->characteristic) {
+-						break;
+-					}
+-					e = e->next;
+-				}
+-
+-				if (e) {
+-					homekit_value_destruct(&e->value);
+-				} else {
+-					e = (client_event_t*) malloc(sizeof(client_event_t));
+-					e->characteristic = event->characteristic;
+-					e->next = NULL;
+-
+-					events_tail->next = e;
+-					events_tail = e;
+-				}
+-
+-				homekit_value_copy(&e->value, &event->value);
+-
+-				homekit_value_destruct(&event->value);
+-				free(event);
+-			}
+-
+-			send_client_events(context, events_head);
+-
+-			client_event_t *e = events_head;
+-			while (e) {
+-				client_event_t *next = e->next;
+-
+-				homekit_value_destruct(&e->value);
+-				free(e);
+-
+-				e = next;
+-			}
+-		}
+-
+-		context = context->next;
+-	}
+-
++    for (client_context_t *context = server->clients; context; context = context->next) {
++        if (context->disconnect || context->step != HOMEKIT_CLIENT_STEP_PAIR_VERIFY_2OF2)
++            continue;
++        characteristic_event_t *event = NULL;
++        client_event_t *head = NULL;
++        client_event_t **tail = &head;
++        // Events are already coalesced by characteristic at enqueue time.
++        while (context->event_queue && q_pop(context->event_queue, &event)) {
++            client_event_t *node = (client_event_t *)malloc(sizeof(client_event_t));
++            if (!node) {
++                homekit_event_destroy(event);
++                homekit_event_queue_clear(context->event_queue);
++                context->disconnect = true;
++                context->socket->stop();
++                break;
++            }
++            node->characteristic = event->characteristic;
++            node->value = event->value; // transfer owned value; do not allocate another copy
++            node->next = NULL;
++            free(event);
++            *tail = node;
++            tail = &node->next;
++        }
++        if (head && !context->disconnect)
++            send_client_events(context, head);
++        while (head) {
++            client_event_t *next = head->next;
++            homekit_value_destruct(&head->value);
++            free(head);
++            head = next;
++        }
++    }
+ }
+ 
+ bool homekit_client_need_process_data(client_context_t *context) {
+@@ -3201,10 +3149,11 @@
+ //				CLIENT_INFO(context, "Step is %d", context->step);
+ //			}
+ //			delay(10);
++		client_context_t *next = context->next; // processing can close and free context
+ 		homekit_client_process(context);
+ //		} while(homekit_client_need_process_data(context));
+ 
+-		context = context->next;
++		context = next;
+ 	}
+ 	homekit_server_process_notifications(server);
+ }
+--- a/src/arduino_homekit_server.h
++++ b/src/arduino_homekit_server.h
+@@ -20,6 +20,7 @@
+ #include "homekit_debug.h"
+ #include "port.h"
+ #include "cQueue.h"
++#include "homekit_event_queue.h"
+ #include "homekit/homekit.h"
+ #include "http_parser.h"
+ 
+@@ -87,10 +88,6 @@
+ 	client_context_t *clients;
+ } homekit_server_t;
+ 
+-typedef struct {
+-	homekit_characteristic_t *characteristic;
+-	homekit_value_t value;
+-} characteristic_event_t;
+ 
+ struct _client_context_t {
+ 	homekit_server_t *server;
+--- /dev/null
++++ b/src/homekit_event_queue.h
+@@ -0,0 +1,102 @@
++// Local RATGDO patch: bounded ownership of pending HomeKit notifications.
++#pragma once
++#include <stdlib.h>
++#include <string.h>
++#include <homekit/types.h>
++#include "cQueue.h"
++
++typedef struct {
++    homekit_characteristic_t *characteristic;
++    homekit_value_t value;
++} characteristic_event_t;
++
++// Unlike the upstream void copy helper, propagate allocation failure. Values
++// are copied before replacing an existing notification so failure preserves it.
++static inline bool homekit_event_copy_value(homekit_value_t *dst, homekit_value_t *src) {
++    *dst = *src;
++    if (src->is_null || src->is_static)
++        return true;
++    switch (src->format) {
++    case homekit_format_string:
++        dst->string_value = strdup(src->string_value);
++        return dst->string_value != NULL;
++    case homekit_format_data:
++        dst->data_value = src->data_size ? (uint8_t *)malloc(src->data_size) : NULL;
++        if (src->data_size && !dst->data_value)
++            return false;
++        if (src->data_size)
++            memcpy(dst->data_value, src->data_value, src->data_size);
++        return true;
++    case homekit_format_tlv: {
++        dst->tlv_values = (tlv_values_t *)calloc(1, sizeof(tlv_values_t));
++        if (!dst->tlv_values)
++            return false;
++        tlv_t **tail = &dst->tlv_values->head;
++        for (tlv_t *item = src->tlv_values->head; item; item = item->next) {
++            tlv_t *copy = (tlv_t *)calloc(1, sizeof(tlv_t));
++            if (!copy) {
++                homekit_value_destruct(dst);
++                return false;
++            }
++            *tail = copy;
++            tail = &copy->next;
++            copy->type = item->type;
++            copy->size = item->size;
++            if (item->size) {
++                copy->value = (uint8_t *)malloc(item->size);
++                if (!copy->value) {
++                    homekit_value_destruct(dst);
++                    return false;
++                }
++                memcpy(copy->value, item->value, item->size);
++            }
++        }
++        return true;
++    }
++    default:
++        return true; // scalar value, no heap ownership
++    }
++}
++
++static inline void homekit_event_destroy(characteristic_event_t *event) {
++    homekit_value_destruct(&event->value);
++    free(event);
++}
++
++static inline void homekit_event_queue_clear(Queue_t *queue) {
++    characteristic_event_t *event;
++    while (q_pop(queue, &event))
++        homekit_event_destroy(event);
++}
++
++// Caller disconnects on failure: dropping a distinct characteristic silently
++// could leave a controller with stale state. Reconnection obtains a fresh snapshot.
++static inline bool homekit_event_enqueue(Queue_t *queue,
++        homekit_characteristic_t *ch, homekit_value_t *value) {
++    characteristic_event_t *event;
++    for (uint16_t i = 0; i < q_getCount(queue); ++i) {
++        if (q_peekIdx(queue, &event, i) && event->characteristic == ch) {
++            homekit_value_t replacement;
++            if (!homekit_event_copy_value(&replacement, value))
++                return false;
++            homekit_value_destruct(&event->value);
++            event->value = replacement;
++            return true;
++        }
++    }
++    if (q_isFull(queue))
++        return false;
++    event = (characteristic_event_t *)malloc(sizeof(*event));
++    if (!event)
++        return false;
++    event->characteristic = ch;
++    if (!homekit_event_copy_value(&event->value, value)) {
++        free(event);
++        return false;
++    }
++    if (!q_push(queue, &event)) {
++        homekit_event_destroy(event);
++        return false;
++    }
++    return true;
++}
