@@ -35,9 +35,9 @@ The tool is already installed in a repository-local virtual environment. To
 recreate it: `python3 -m venv .cache/usb-tools`, then
 `.cache/usb-tools/bin/python -m pip install esptool==5.1.0`.
 
-Prepared firmware: `2.2.4-local1`, 797,840-byte file, ESP8266 image with 4 MB/DIO/
+Prepared firmware: `2.2.4-local1`, 797,888-byte file, ESP8266 image with 4 MB/DIO/
 40 MHz header. Expected SHA-256:
-`3162f1af734a8490e414178637ca41c202b800c061e5ecb4915b0c6000ef2c3a`.
+`3a17a7ff10bc2fca673303468912938a80b0718b4e80c1a9a8c723f87fab37d9`.
 The file size includes image overhead and differs from the build's flash-usage
 figure. Keep its matching `.cache/firmware/firmware.elf` for crash decoding.
 
@@ -108,10 +108,10 @@ board has resumed communicating with the opener.
 
 A separate agent reviewed the actual Arduino core/parser and persistence changes.
 It found no firmware-only USB blocker and confirmed the storage compatibility
-above. It identified an OTA-only limitation: the timeout callback ignores a false
-return from `schedule_recurrent_function_us()` under allocation failure. In that
-case timeout recovery can be lost. This is not fixed in the prepared image and
-should be addressed before relying on future OTA fault recovery.
+above. It identified an OTA-only allocation-failure gap in timeout scheduling. The
+follow-up fix retries scheduling every 100 ms until accepted; new upload progress
+replaces the retry deadline and an abort cancels it. Host fault-injection tests
+cover repeated failures and eventual socket closure from the scheduled callback.
 
 References: [upstream USB/esptool instructions](https://github.com/ratgdo/homekit-ratgdo#esptool),
 [Espressif read/write/verify documentation](https://docs.espressif.com/projects/esptool/en/latest/esp8266/esptool/basic-commands.html),

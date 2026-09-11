@@ -11,7 +11,8 @@ physical-device update is part of the build/test workflow.
   responder. This remains disabled after abort or success until reboot.
 - A firmware upload with no progress for 30 seconds has its own socket closed from
   a scheduled callback. The timer is not a hardware watchdog. It also stays armed
-  if a write fails while the HTTP parser is still receiving the request.
+  if a write fails while the HTTP parser is still receiving the request. If the
+  scheduler cannot allocate its callback, the timer retries every 100 ms.
 - After abort or updater failure, the updater buffer and pending boot command are
   cleared. Once the parser unwinds, the main loop performs a controlled reboot
   after at least 1.5 seconds from failure. This restores HomeKit/GDO services using
@@ -99,9 +100,9 @@ an actual GitHub Actions run; local validation is separate.
 Validated locally on 2026-09-11: host regression tests passed with ASan/UBSan,
 including 1,000 HomeKit burst/disconnect cycles. The ARM Linux build of
 `ratgdo_esp8266_hV25` succeeded as `2.2.4-local1`, using 47,072 bytes of static RAM
-and 793,691 bytes of flash. The final build reused cached pinned dependencies;
+and 793,739 bytes of flash. The final build reused cached pinned dependencies;
 its recorded source hashes match the tested working tree. Firmware SHA-256:
-`3162f1af734a8490e414178637ca41c202b800c061e5ecb4915b0c6000ef2c3a`.
+`3a17a7ff10bc2fca673303468912938a80b0718b4e80c1a9a8c723f87fab37d9`.
 No hardware flashing or live OTA validation was performed.
 
 ## Updating from upstream with jj

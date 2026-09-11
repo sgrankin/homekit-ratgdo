@@ -1817,20 +1817,24 @@ void check_upload_timeout()
     if (otaSession.uploadTimedOut(static_cast<uint32_t>(_millis())))
         firmwareUploadClient.stop();
 }
+// The core allocates a queue node when scheduling. Retry from the timer if
+// allocation fails; never close a TCP socket from the timer callback itself.
+void schedule_upload_timeout()
+{
+    if (!schedule_recurrent_function_us([]
+    {
+        check_upload_timeout();
+        return false;
+    }, 0))
+        uploadIdleTimer.once_ms(100, schedule_upload_timeout);
+}
 #endif
 
 void note_upload_progress()
 {
     otaSession.receiving(static_cast<uint32_t>(_millis()));
 #ifdef ESP8266
-    uploadIdleTimer.once_ms(OtaSession::uploadIdleMs, []
-    {
-        schedule_recurrent_function_us([]
-        {
-            check_upload_timeout();
-            return false;
-        }, 0);
-    });
+    uploadIdleTimer.once_ms(OtaSession::uploadIdleMs, schedule_upload_timeout);
 #endif
 }
 

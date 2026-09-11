@@ -64,12 +64,36 @@ struct
 } MDNS;
 struct Ticker
 {
-    template <class F> void once_ms(uint32_t, F) {}
-    void detach() {}
+    void (*callback)() = nullptr;
+    uint32_t delayMs = 0;
+    void once_ms(uint32_t delay, void (*fn)())
+    {
+        delayMs = delay;
+        callback = fn;
+    }
+    void detach()
+    {
+        callback = nullptr;
+    }
+    void fire()
+    {
+        assert(callback);
+        auto fn = callback;
+        callback = nullptr;
+        fn();
+    }
 };
-template <class F> void schedule_recurrent_function_us(F fn, int)
+unsigned schedulingFailures = 0;
+bool (*scheduledCallback)() = nullptr;
+template <class F> bool schedule_recurrent_function_us(F fn, int)
 {
-    fn();
+    if (schedulingFailures)
+    {
+        --schedulingFailures;
+        return false;
+    }
+    scheduledCallback = fn;
+    return true;
 }
 struct Client
 {
@@ -230,6 +254,9 @@ static Client firmwareUploadClient;
 void reset()
 {
     otaSession = OtaSession();
+    uploadIdleTimer.detach();
+    scheduledCallback = nullptr;
+    schedulingFailures = 0;
     server = Server();
     Update = FakeUpdate();
     config = Config();
@@ -415,6 +442,49 @@ int main()
     event(UPLOAD_FILE_START);
     event(UPLOAD_FILE_ABORTED);
     assert(ebootPending && !otaSession.recovering()); // verification must not cancel a staged image
+    // Queue allocation failures retain a timer retry without touching TCP in timer context.
+    reset();
+    event(UPLOAD_FILE_START);
+    nowMs = 30000;
+    schedulingFailures = 2;
+    uploadIdleTimer.fire();
+    assert(uploadIdleTimer.callback && uploadIdleTimer.delayMs == 100);
+    assert(!scheduledCallback && !socketStops);
+    nowMs += 100;
+    uploadIdleTimer.fire();
+    assert(uploadIdleTimer.callback && !scheduledCallback && !socketStops);
+    nowMs += 100;
+    uploadIdleTimer.fire();
+    assert(!uploadIdleTimer.callback && scheduledCallback && !socketStops);
+    assert(!scheduledCallback());
+    assert(socketStops == 1);
+    event(UPLOAD_FILE_ABORTED);
+    assertRecovery();
+
+    // New progress replaces a pending retry with a fresh inactivity deadline.
+    reset();
+    event(UPLOAD_FILE_START);
+    nowMs = 30000;
+    schedulingFailures = 1;
+    uploadIdleTimer.fire();
+    event(UPLOAD_FILE_WRITE, 2048);
+    assert(uploadIdleTimer.delayMs == OtaSession::uploadIdleMs);
+    nowMs += OtaSession::uploadIdleMs;
+    uploadIdleTimer.fire();
+    assert(scheduledCallback && !socketStops);
+    assert(!scheduledCallback());
+    assert(socketStops == 1);
+
+    // Abort cancels pending retries.
+    reset();
+    event(UPLOAD_FILE_START);
+    nowMs = 30000;
+    schedulingFailures = 1;
+    uploadIdleTimer.fire();
+    event(UPLOAD_FILE_ABORTED);
+    assert(!uploadIdleTimer.callback && !scheduledCallback);
+    assertRecovery();
+
     puts("OTA: abort, begin/write/finalize failures, metadata, rollover, MDNS after shutdown: "
          "passed");
 }
