@@ -10,7 +10,9 @@ as of this review. The library pin alone cannot supply these fixes.
 - frees pending events and their values on disconnect;
 - propagates event/value/client/list allocation failures, requesting a client reconnect;
 - transfers values when creating the send list instead of allocating extra deep copies;
-- saves the next client before processing can free the current client.
+- saves the next client before processing can free the current client;
+- logs failed HomeKit writes with transport/heap state captured before closing
+  the socket; see [diagnostic fields](../../docs/homekit-write-diagnostics.md).
 
 The PlatformIO pre-script applies it after dependency installation and before
 compilation. `manifest.json` records SHA-256 of every changed file before and after

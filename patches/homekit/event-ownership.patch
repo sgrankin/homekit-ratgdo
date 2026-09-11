@@ -36,7 +36,44 @@
  		q_kill(c->event_queue);
  		free(c->event_queue);
  	}
-@@ -678,29 +683,14 @@
+@@ -528,7 +533,9 @@
+ }
+ 
+ void write(client_context_t *context, byte *data, int data_size) {
+-	if ((!context) || (!context->socket) || (!context->socket->connected())) {
++	if (!context)
++		return;
++	if ((!context->socket) || (!context->socket->connected())) {
+ 		CLIENT_ERROR(context, "The socket is null! (or is closed)");
+ 		return;
+ 	}
+@@ -541,9 +548,24 @@
+ 		return;
+ 	}
+ 	CLIENT_VERBOSE(context, "Sending data of size %d", data_size);
++	const uint32_t started = millis();
++	const uint8_t tcp_before = context->socket->status();
++	const int send_before = context->socket->availableForWrite();
+ 	int write_size = context->socket->write(data, data_size);
+ 	if (write_size != data_size) {
+-		CLIENT_ERROR(context, "socket.write, data_size=%d, write_size=%d", data_size, write_size);
++		// Capture transport state before logging or our own stop() changes it.
++		// No payload, query string, pairing identifier or key is logged.
++		const uint32_t elapsed = millis() - started;
++		const uint8_t tcp_after = context->socket->status();
++		const bool connected = context->socket->connected();
++		const int send_after = context->socket->availableForWrite();
++		CLIENT_ERROR(context, "HKTX short phase=%s ep=%u step=%u enc=%u want=%d sent=%d ms=%lu tcp=%u->%u conn=%u snd=%d->%d heap=%u max=%u frag=%u",
++			context->sending_events ? "event" : "response",
++			(unsigned)context->endpoint, (unsigned)context->step, (unsigned)context->encrypted,
++			data_size, write_size, (unsigned long)elapsed,
++			(unsigned)tcp_before, (unsigned)tcp_after, (unsigned)connected,
++			send_before, send_after, (unsigned)ESP.getFreeHeap(),
++			(unsigned)ESP.getMaxFreeBlockSize(), (unsigned)ESP.getHeapFragmentation());
+ 		context->error_write = true;
+ 		//context->socket->keepAlive(1, 1, 1);	// fast disconnected internally in 1 second.
+ 		context->socket->stop();
+@@ -678,29 +700,14 @@
  		CLIENT_DEBUG(client, "This value is set by this client, no need to send notification");
  		return;
  	}
@@ -73,7 +110,7 @@
  }
  
  void client_send(client_context_t *context, byte *data, size_t data_size) {
-@@ -3083,6 +3073,12 @@
+@@ -3083,6 +3090,12 @@
  	}
  
  	client_context_t *context = client_context_new(wifiClient);
@@ -86,7 +123,7 @@
  	context->server = server;
  	context->socket = wifiClient;
  
-@@ -3098,86 +3094,38 @@
+@@ -3098,86 +3111,41 @@
  
  //设备向iPhone传递characteristic的消息
  void homekit_server_process_notifications(homekit_server_t *server) {
@@ -193,8 +230,11 @@
 +            *tail = node;
 +            tail = &node->next;
 +        }
-+        if (head && !context->disconnect)
++        if (head && !context->disconnect) {
++            context->sending_events = true;
 +            send_client_events(context, head);
++            context->sending_events = false;
++        }
 +        while (head) {
 +            client_event_t *next = head->next;
 +            homekit_value_destruct(&head->value);
@@ -205,7 +245,7 @@
  }
  
  bool homekit_client_need_process_data(client_context_t *context) {
-@@ -3201,10 +3149,11 @@
+@@ -3201,10 +3169,11 @@
  //				CLIENT_INFO(context, "Step is %d", context->step);
  //			}
  //			delay(10);
@@ -239,6 +279,14 @@
  
  struct _client_context_t {
  	homekit_server_t *server;
+@@ -128,6 +125,7 @@
+ 
+ 	homekit_client_step_t step; // WangBin added
+ 	bool error_write; // WangBin added
++	bool sending_events; // distinguish notifications from responses in write diagnostics
+ 
+ 	struct _client_context_t *next;
+ };
 --- /dev/null
 +++ b/src/homekit_event_queue.h
 @@ -0,0 +1,102 @@

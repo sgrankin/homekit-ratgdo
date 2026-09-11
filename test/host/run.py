@@ -99,6 +99,11 @@ def build_homekit(compiler, flags, source, tmp):
     for signature in signatures:
         code = code.replace(signature + " {", signature + "\n{")
     (tmp / "homekit_handlers.inc").write_text("\n".join(function(code, sig) for sig in signatures))
+    write_signature = "void write(client_context_t *context, byte *data, int data_size)"
+    write_code = code.replace(write_signature + " {", write_signature + "\n{")
+    (tmp / "homekit_write.inc").write_text(function(write_code, write_signature))
+    run(compiler + flags + ["-I", tmp, ROOT / "test/host/homekit_write.cpp", "-o", tmp / "homekit_write"])
+    run([tmp / "homekit_write"])
     header = (source / "src/arduino_homekit_server.h").read_text()
     start = header.index("typedef struct _client_event {")
     end = header.index("} client_event_t;", start) + len("} client_event_t;")

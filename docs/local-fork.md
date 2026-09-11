@@ -23,7 +23,7 @@ physical-device update is part of the build/test workflow.
 - The pinned HomeKit library has a checked local patch for event ownership,
   allocation failures, notification ordering and safe traversal when clients close.
   See [the dependency patch](../patches/homekit/README.md).
-- Default ESP8266 builds identify themselves as **`2.2.4-local1`**, derived from the
+- Default ESP8266 builds identify themselves as **`2.2.4-local2`**, derived from the
   upstream manifest plus `VERSION_TAG`. Increase the local suffix when preparing
   another installed build; the upstream manifest remains untouched.
 
@@ -99,10 +99,10 @@ an actual GitHub Actions run; local validation is separate.
 
 Validated locally on 2026-09-11: host regression tests passed with ASan/UBSan,
 including 1,000 HomeKit burst/disconnect cycles. The ARM Linux build of
-`ratgdo_esp8266_hV25` succeeded as `2.2.4-local1`, using 47,072 bytes of static RAM
-and 793,739 bytes of flash. The final build reused cached pinned dependencies;
+`ratgdo_esp8266_hV25` succeeded as `2.2.4-local2`, using 47,088 bytes of static RAM
+and 796,035 bytes of flash. The final build reused cached pinned dependencies;
 its recorded source hashes match the tested working tree. Firmware SHA-256:
-`3a17a7ff10bc2fca673303468912938a80b0718b4e80c1a9a8c723f87fab37d9`.
+`79f4bd30c5f2033ccb581b33e17b7ebec145104ee45dbe227a44013221a6999e`.
 No hardware flashing or live OTA validation was performed.
 
 ## Updating from upstream with jj

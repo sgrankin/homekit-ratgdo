@@ -65,6 +65,7 @@ struct Socket
 struct client_context_t
 {
     bool disconnect = false;
+    bool sending_events = false;
     Queue_t *event_queue = nullptr;
     Socket *socket = nullptr;
     int step = HOMEKIT_CLIENT_STEP_PAIR_VERIFY_2OF2;
@@ -79,8 +80,9 @@ struct homekit_server_t
 // Exact client_event_t definition is extracted from the patched library header.
 #include "homekit_client_event.inc"
 static std::vector<std::pair<const homekit_characteristic_t *, int>> sent;
-void send_client_events(client_context_t *, client_event_t *head)
+void send_client_events(client_context_t *context, client_event_t *head)
 {
+    assert(context->sending_events);
     for (auto p = head; p; p = p->next)
         sent.push_back({p->characteristic, p->value.int_value});
 }
@@ -123,6 +125,7 @@ int main()
         assert(allocations.size() == 2); // queue backing store plus one owned event
         sent.clear();
         homekit_server_process_notifications(&server);
+        assert(!client.sending_events);
         assert(sent.size() == 1 && sent[0].second == 99); // newest, not oldest
         assert(allocations.size() == 1);
         // Distinct characteristic overflow requests reconnect instead of leaking/dropping silently.

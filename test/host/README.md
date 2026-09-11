@@ -41,3 +41,8 @@ The patcher is also tested against clean, already-patched and modified sources.
 
 See [the fork workflow](../../docs/local-fork.md) for firmware builds and hardware
 validation limits. No radio, real flash or physical opener is simulated here.
+
+The write-diagnostic suite compiles the production library write function and
+checks short/zero writes, state captured before local closure, notification labels,
+clock rollover and quiet successful writes. It substitutes transport/heap APIs;
+it does not simulate packet delivery.
