@@ -9,3 +9,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 test/host/run.py
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install platformio==6.1.19
+      - run: pio run -e ratgdo_esp8266_hV25 -j 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esp8266-local-firmware
+          path: |
+            .pio/build/ratgdo_esp8266_hV25/firmware.bin
+            .pio/build/ratgdo_esp8266_hV25/firmware.elf

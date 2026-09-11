@@ -1,7 +1,15 @@
 # Host regression tests
 
+Format the C++ harness with `clang-format` (the style is scoped to this directory):
+
+```sh
+clang-format -i test/host/*.cpp test/host/*.h
+clang-format --dry-run --Werror test/host/*.cpp test/host/*.h
+```
+
 Run `python3 test/host/run.py` from any directory. Requires Python 3 and Clang
-with AddressSanitizer and UndefinedBehaviorSanitizer. This does not build or
+with AddressSanitizer and UndefinedBehaviorSanitizer, and Git. The first run fetches
+the pinned HomeKit source into `.cache/host-homekit`; later runs are local. This does not build or
 flash the ESP8266 and never contacts a device.
 
 The harness compiles the actual OTA handlers and mDNS announcement guard from
@@ -22,3 +30,14 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk python3 test/hos
 
 `SDKROOT` and `CXX` are optional overrides; normal macOS and Linux installations
 should use the first command. All generated files and executables are temporary.
+
+The HomeKit suite additionally compiles actual notification and traversal functions
+from the patched dependency, its queue/value C implementations and its ownership
+helper. It checks 1,000 burst/disconnect cycles, queue overflow, latest-value
+coalescing, allocation failure at event/list/deep-copy stages and client removal
+during traversal. Allocation accounting checks leaks explicitly, including on
+macOS where LeakSanitizer is unavailable. ASan/UBSan check invalid accesses.
+The patcher is also tested against clean, already-patched and modified sources.
+
+See [the fork workflow](../../docs/local-fork.md) for firmware builds and hardware
+validation limits. No radio, real flash or physical opener is simulated here.
