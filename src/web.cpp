@@ -41,6 +41,7 @@
 #include "config.h"
 #include "comms.h"
 #include "web.h"
+#include "ota_session.h"
 #include "homekit.h"
 #include "softAP.h"
 #include "json.h"
@@ -132,6 +133,13 @@ bool web_setup_done = false;
 
 // Implement our own firmware update so can enforce MD5 check.
 // Based on ESP8266HTTPUpdateServer
+static OtaSession otaSession;
+#ifdef ESP8266
+static Ticker uploadIdleTimer;
+static WiFiClient firmwareUploadClient;
+#endif
+void poll_ota_recovery();
+
 std::string _updaterError;
 bool _authenticatedUpdate;
 char firmwareMD5[36] = "";
@@ -331,6 +339,8 @@ void notify_new_ipv6_address()
 
 void web_loop()
 {
+    // Recovery must run even while service_timer_loop() is suspended by OTA.
+    poll_ota_recovery();
     if (!web_setup_done)
         return;
 
@@ -982,6 +992,9 @@ void build_status_json(char *json)
 
 void add_static_mdns()
 {
+    // HomeKit OTA shutdown closes the shared responder, including its UDP context.
+    if (!otaSession.servicesRunning())
+        return;
     // Values that do not change during runtime
     ESP_LOGD(TAG, "Adding static mDNS TXT records");
     MDNS.addServiceTxt("ratgdo", "tcp", "model", MODEL_NAME);
@@ -1000,8 +1013,19 @@ void add_static_mdns()
 #endif
 }
 
+#ifdef ESP8266
+void announce_mdns()
+{
+    if (otaSession.servicesRunning())
+        MDNS.announce();
+}
+#endif
+
 void add_dynamic_mdns()
 {
+    // HomeKit OTA shutdown closes the shared responder, including its UDP context.
+    if (!otaSession.servicesRunning())
+        return;
     // Values that may change during runtime
     ESP_LOGD(TAG, "Updating dynamic mDNS TXT records");
     _millis_t upTime = _millis();
@@ -1052,7 +1076,7 @@ void add_dynamic_mdns()
     }
 #endif
 #ifdef ESP8266
-    MDNS.announce();
+    announce_mdns();
 #else
     MDNS.setInstanceName(device_name);
 #endif
@@ -1785,12 +1809,94 @@ void SSEBroadcastState(const char *data, BroadcastType type)
 
 // Implement our own firmware update so can enforce MD5 check.
 // Based on HTTPUpdateServer
+#ifdef ESP8266
+void check_upload_timeout()
+{
+    // This runs from a scheduled yield callback, not inside the timer ISR.
+    // Only close the socket; let the HTTP parser unwind and report ABORTED.
+    if (otaSession.uploadTimedOut(static_cast<uint32_t>(_millis())))
+        firmwareUploadClient.stop();
+}
+#endif
+
+void note_upload_progress()
+{
+    otaSession.receiving(static_cast<uint32_t>(_millis()));
+#ifdef ESP8266
+    uploadIdleTimer.once_ms(OtaSession::uploadIdleMs, []
+    {
+        schedule_recurrent_function_us([]
+        {
+            check_upload_timeout();
+            return false;
+        }, 0);
+    });
+#endif
+}
+
+void poll_ota_recovery()
+{
+    if (otaSession.rebootDue(static_cast<uint32_t>(_millis())))
+    {
+        ESP_LOGI(TAG, "Restarting after failed firmware upload to restore services");
+        server.stop();
+        sync_and_restart();
+    }
+}
+
+void fail_firmware_upload(const char *reason, bool firmware = true)
+{
+    _updaterError = reason;
+    // end(false) releases the updater buffer. Even if all bytes arrived just
+    // before the disconnect, never let an aborted request select a new image.
+    if (firmware)
+    {
+        // Keep the idle timer armed until the parser unwinds. A write error
+        // followed by a stalled client must not strand us inside handleClient().
+        if (Update.isRunning())
+            Update.end(false);
+#ifdef ESP8266
+        eboot_command_clear();
+#endif
+        otaSession.fail(static_cast<uint32_t>(_millis()));
+    }
+    firmwareUpdateSub = NULL;
+    if (otaSession.recovering())
+        _updaterError += " Restarting to restore services.";
+    ESP_LOGE(TAG, "Firmware upload failed: %s", _updaterError.c_str());
+}
+
+// Optional metadata supports legacy uploaders, but supplied values must be valid.
+bool parse_firmware_size(const char *value, size_t &size)
+{
+    size = 0;
+    for (; *value; ++value)
+    {
+        if (*value < '0' || *value > '9' || size > (UINT32_MAX - (*value - '0')) / 10)
+            return false;
+        size = size * 10 + (*value - '0');
+    }
+    return true;
+}
+
+bool valid_firmware_md5(const char *value)
+{
+    if (!*value)
+        return true;
+    if (strlen(value) != 32)
+        return false;
+    for (; *value; ++value)
+        if (!((*value >= '0' && *value <= '9') || (*value >= 'a' && *value <= 'f') ||
+              (*value >= 'A' && *value <= 'F')))
+            return false;
+    return true;
+}
+
 void _setUpdaterError()
 {
     StreamString str;
     Update.printError(str);
-    _updaterError = str.c_str();
-    ESP_LOGE(TAG, "Update error: %s", str.c_str());
+    fail_firmware_upload(str.c_str());
 }
 
 void handle_update()
@@ -1802,17 +1908,15 @@ void handle_update()
     if (!requestAuthenticated())
         return;
 
-    server.client().setNoDelay(true);
-    if (!verify && Update.hasError())
-    {
-        // Error logged in _setUpdaterError
+    otaSession.endReceiving();
 #ifdef ESP8266
-        eboot_command_clear();
-#else
-        // TODO how to handle firmware upload failure on ESP32?
+    uploadIdleTimer.detach();
 #endif
-        firmwareUpdateSub = NULL;
-        ESP_LOGE(TAG, "Firmware upload error. Aborting update, not rebooting");
+    server.client().setNoDelay(true);
+    if (_updaterError.empty() && !verify && !otaSession.complete())
+        fail_firmware_upload("Incomplete firmware upload.");
+    if (!_updaterError.empty())
+    {
         server.send(400, type_txt, _updaterError.c_str());
         return;
     }
@@ -1859,17 +1963,36 @@ void handle_firmware_upload()
             ESP_LOGE(TAG, "Unauthenticated Update");
             return;
         }
-        ESP_LOGI(TAG, "Update: %s", upload.filename.c_str());
         verify = !strcmp(server.arg("action").c_str(), "verify");
-        size = atoi(server.arg("size").c_str());
+        if (!verify && !otaSession.servicesRunning())
+        {
+            fail_firmware_upload("An upload already stopped services; reboot required.");
+            return;
+        }
+        ESP_LOGI(TAG, "Update: %s", upload.filename.c_str());
+        uploadProgress = 0;
+        nextPrintPercent = 5;
+        firmwareMD5[0] = 0;
+        if (!parse_firmware_size(server.arg("size").c_str(), size))
+        {
+            fail_firmware_upload("Invalid firmware size.", !verify);
+            return;
+        }
         md5 = server.arg("md5").c_str();
+
+        if (!valid_firmware_md5(md5))
+        {
+            fail_firmware_upload("Invalid firmware MD5.", !verify);
+            return;
+        }
 
         // We are updating.  If size and MD5 provided, save them
         firmwareSize = size;
         if (strlen(md5) > 0)
             strlcpy(firmwareMD5, md5, sizeof(firmwareMD5));
 
-        uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+        const uint32_t freeSketchSpace = ESP.getFreeSketchSpace();
+        uint32_t maxSketchSpace = freeSketchSpace > 0x1000 ? (freeSketchSpace - 0x1000) & 0xFFFFF000 : 0;
         ESP_LOGI(TAG, "Available space for upload: %lu", maxSketchSpace);
         ESP_LOGI(TAG, "Firmware size: %s", (firmwareSize > 0) ? std::to_string(firmwareSize).c_str() : "Unknown");
         ESP_LOGI(TAG, "Flash chip speed %d MHz", ESP.getFlashChipSpeed() / 1000000);
@@ -1878,10 +2001,8 @@ void handle_firmware_upload()
         // ESP_LOGI(TAG, "eboot_command: 0x%08X 0x%08X [0x%08X 0x%08X 0x%08X (%d)]", ebootCmd.magic, ebootCmd.action, ebootCmd.args[0], ebootCmd.args[1], ebootCmd.args[2], ebootCmd.args[2]);
         if (firmwareSize > maxSketchSpace)
         {
-            ESP_LOGE(TAG, "Firmware size is larger than available OTA upload space");
-            // If we detect this error then we will not shut down all our services, because upload will fail.
-            // Failure is detected on first call to Update.write() where it will set UPDATE_ERROR_SPACE.
-            // This is passed back to the client with a http 400 error and the string "Not Enough Space"
+            fail_firmware_upload("Not Enough Space", !verify);
+            return;
         }
         else if (!verify)
         {
@@ -1891,6 +2012,11 @@ void handle_firmware_upload()
             ESP_LOGI(TAG, "Shutdown HomeKit and GDO communications");
 
             // Service loop has things like reboot after X days, homekit notifications, etc. that we don't want during OTA
+            otaSession.stopServices();
+#ifdef ESP8266
+            firmwareUploadClient = server.client();
+#endif
+            note_upload_progress();
             suspend_service_loop = true;
 #ifdef RATGDO32_DISCO
             // Ignore vehicle distance sensor
@@ -1927,6 +2053,8 @@ void handle_firmware_upload()
     }
     else if (_authenticatedUpdate && upload.status == UPLOAD_FILE_WRITE && !_updaterError.length())
     {
+        if (!verify)
+            note_upload_progress();
         // Progress dot dot dot
         Serial.print(".");
         if (firmwareSize > 0)
@@ -1965,8 +2093,17 @@ void handle_firmware_upload()
         Serial.print("\n"); // newline after last of the dot dot dots
         if (!verify)
         {
+            if (firmwareSize && upload.totalSize != firmwareSize)
+            {
+                fail_firmware_upload("Firmware size does not match upload.");
+                return;
+            }
             if (Update.end(true))
             {
+                otaSession.finish();
+#ifdef ESP8266
+                uploadIdleTimer.detach();
+#endif
                 ESP_LOGI(TAG, "Upload size: %zu", upload.totalSize);
             }
             else
@@ -1979,8 +2116,12 @@ void handle_firmware_upload()
     else if (_authenticatedUpdate && upload.status == UPLOAD_FILE_ABORTED)
     {
         if (!verify)
-            Update.end();
-        ESP_LOGI(TAG, "%s was aborted", verify ? "Verify" : "Update");
-        firmwareUpdateSub = NULL;
+        {
+            otaSession.endReceiving();
+#ifdef ESP8266
+            uploadIdleTimer.detach();
+#endif
+        }
+        fail_firmware_upload(verify ? "Verification upload aborted." : "Firmware upload aborted.", !verify);
     }
 }

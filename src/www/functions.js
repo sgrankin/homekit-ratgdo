@@ -1125,12 +1125,12 @@ async function firmwareUpdate(github = true) {
                 location.href = "/";
                 return;
             }
-            if (confirm(`Firmware upload error: ${rebootMsg} Existing firmware not replaced. Proceed to reboot device? NOTE: Reboot is required to re-enable HomeKit services.`)) {
-                rebootRATGDO(false);
-            }
-            else {
+            if (rebootMsg.includes("Restarting to restore services.")) {
+                showRebootMsg = true;
+                rebootMsg = "Update failed. Restarting with existing firmware...";
+            } else {
+                alert(`Firmware upload rejected: ${rebootMsg}`);
                 showRebootMsg = false;
-                location.href = "/";
             }
             return;
         }

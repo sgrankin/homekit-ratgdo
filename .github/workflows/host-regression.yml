@@ -1,0 +1,11 @@
+name: Host regressions
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 test/host/run.py
