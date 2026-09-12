@@ -228,7 +228,7 @@ bool requestAuthenticated()
 struct FakeUpdate
 {
     bool running = false, failBegin = false, failWrite = false, failEnd = false;
-    unsigned begins = 0, ends = 0;
+    unsigned begins = 0, ends = 0, writes = 0;
     size_t progress() const
     {
         return 4096;
@@ -257,6 +257,7 @@ struct FakeUpdate
     }
     size_t write(uint8_t *, size_t size)
     {
+        ++writes;
         return failWrite ? 0 : size;
     }
     void printError(StreamString &out)
@@ -522,6 +523,71 @@ int main()
     event(UPLOAD_FILE_ABORTED);
     assert(!uploadIdleTimer.callback && !scheduledCallback);
     assertRecovery();
+
+    // Receive-only verification must be bounded even before its first chunk.
+    reset();
+    server.query["action"] = "verify";
+    event(UPLOAD_FILE_START);
+    assert(uploadIdleTimer.callback && otaSession.servicesRunning());
+    nowMs = 30000;
+    uploadIdleTimer.fire();
+    assert(scheduledCallback && !socketStops);
+    assert(!scheduledCallback());
+    assert(socketStops == 1);
+    event(UPLOAD_FILE_ABORTED);
+    assert(!uploadIdleTimer.callback && !otaSession.uploadTimedOut(nowMs));
+    handle_update();
+    assert(server.response == 400);
+    nowMs += 100000;
+    poll_ota_recovery();
+    assert(!restarts && !shutdowns && !otaSession.recovering());
+    assert(!Update.begins && !Update.writes && !Update.ends && !ebootPending);
+    assert(homekit_setup_done && !suspend_service_loop);
+    announce_mdns();
+    assert(mdnsSends == 1);
+
+    // Progress extends verification's deadline; completion disarms it. A
+    // subsequent verification can use the same server without a reboot.
+    server.query["size"] = "4096";
+    event(UPLOAD_FILE_START);
+    nowMs += 29999;
+    event(UPLOAD_FILE_WRITE, 2048);
+    nowMs += 29999;
+    check_upload_timeout();
+    assert(socketStops == 1);
+    event(UPLOAD_FILE_WRITE, 2048);
+    event(UPLOAD_FILE_END);
+    assert(!uploadIdleTimer.callback);
+    handle_update();
+    assert(server.response == 200);
+    nowMs += 30000;
+    check_upload_timeout();
+    assert(socketStops == 1 && !Update.begins && !Update.writes && !Update.ends);
+
+    // Invalid verification metadata must not leave the parser unbounded.
+    reset();
+    server.query["action"] = "verify";
+    server.query["size"] = "bad";
+    event(UPLOAD_FILE_START);
+    assert(!_updaterError.empty() && uploadIdleTimer.callback);
+    nowMs = 30000;
+    check_upload_timeout();
+    assert(socketStops == 1);
+    event(UPLOAD_FILE_ABORTED);
+    assert(!otaSession.recovering() && !shutdowns && !Update.begins);
+
+    // A verification timeout cannot invalidate an already staged image.
+    reset();
+    event(UPLOAD_FILE_START);
+    event(UPLOAD_FILE_WRITE, 4096);
+    event(UPLOAD_FILE_END);
+    server.query["action"] = "verify";
+    event(UPLOAD_FILE_START);
+    nowMs = 30000;
+    check_upload_timeout();
+    assert(socketStops == 1);
+    event(UPLOAD_FILE_ABORTED);
+    assert(ebootPending && otaSession.complete() && !otaSession.recovering());
 
     puts("OTA: abort, begin/write/finalize failures, metadata, rollover, MDNS after shutdown: "
          "passed");

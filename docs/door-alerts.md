@@ -45,7 +45,7 @@ timers and alert transitions add no settings/flash writes.
 
 Build status: local5 firmware build passed on 2026-09-12, following the passing
 host regressions and JavaScript syntax check. The image is 803,472 bytes;
-SHA-256 `a93244896ceefe66b68e5ef4254c2817e22ae72ce9f6982842562ca6430be543`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
+SHA-256 `3a406b9041a9152f621ffe938d842228c8c7723b2658063f91d6c03cfa744ca1`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
 The device continues running local4; local5 has not been flashed or tested in Home.
 
 ## Missed-status recovery
@@ -89,5 +89,22 @@ with a broken pipe. The device logged a 30,001 ms idle timeout after 10,240
 received bytes (8,192 flashed, 1,661 partial), then rebooted through normal
 recovery. Post-reboot status confirmed local4, Closed, paired, opener firmware
 3.13, and unchanged crash count 1. The new local5 image is **not installed**.
-The verified 803,472-byte BIN and its 576,513-byte gzip are ready for USB;
-gzip MD5 is `6603914b682d655ae088050645112b6d`.
+The verified 803,472-byte BIN and its 576,506-byte gzip are ready for USB;
+gzip MD5 is `eef34c75fba721e9a57b1361029a6927`.
+
+## Verification upload timeout
+
+Receive-only (`action=verify`) uploads now use the same 30-second inactivity
+watchdog as firmware uploads. It is armed before metadata validation, refreshed
+on accepted chunks, and canceled on completion or abort. The scheduled yield
+callback closes the upload socket so the multipart parser can return; it does
+not perform firmware writes or stop services. Aborting verification does not
+schedule a reboot or invalidate an already staged firmware image. Host tests
+exercise first-chunk stalls, progress, completion, rejected metadata, subsequent
+requests, and preservation of a staged image.
+
+This closes a recovery gap exposed by the receive-only diagnostic: that transfer
+also stalled (75% controller ping loss, 0% gateway loss) without OTA service
+shutdown or flash writes. The device then stopped responding, including to a
+remote reboot request. The original transfer failure remains under investigation;
+this fix bounds the parser stall while cooperative scheduling continues to run.

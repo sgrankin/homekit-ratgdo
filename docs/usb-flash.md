@@ -46,7 +46,7 @@ recreate it: `python3 -m venv .cache/usb-tools`, then
 
 Prepared firmware: `2.2.4-local5`, 803,472-byte file, ESP8266 image with 4 MB/DIO/
 40 MHz header. Expected SHA-256:
-`a93244896ceefe66b68e5ef4254c2817e22ae72ce9f6982842562ca6430be543`.
+`3a406b9041a9152f621ffe938d842228c8c7723b2658063f91d6c03cfa744ca1`.
 The file size includes image overhead and differs from the build's flash-usage
 figure. Keep its matching `.cache/firmware/firmware.elf` for crash decoding.
 

@@ -1997,6 +1997,12 @@ void handle_firmware_upload()
             fail_firmware_upload("An upload already stopped services; reboot required.");
             return;
         }
+        // Both modes occupy the synchronous multipart parser. Arm recovery
+        // before metadata validation so rejected/stalled uploads also unwind.
+#ifdef ESP8266
+        firmwareUploadClient = server.client();
+#endif
+        note_upload_progress();
         ESP_LOGI(TAG, "Update: %s", upload.filename.c_str());
         uploadProgress = 0;
         nextPrintPercent = 5;
@@ -2041,10 +2047,6 @@ void handle_firmware_upload()
 
             // Service loop has things like reboot after X days, homekit notifications, etc. that we don't want during OTA
             otaSession.stopServices();
-#ifdef ESP8266
-            firmwareUploadClient = server.client();
-#endif
-            note_upload_progress();
             suspend_service_loop = true;
 #ifdef RATGDO32_DISCO
             // Ignore vehicle distance sensor
@@ -2081,8 +2083,7 @@ void handle_firmware_upload()
     }
     else if (_authenticatedUpdate && upload.status == UPLOAD_FILE_WRITE && !_updaterError.length())
     {
-        if (!verify)
-            note_upload_progress();
+        note_upload_progress();
         // Progress dot dot dot
         Serial.print(".");
         if (firmwareSize > 0)
@@ -2118,6 +2119,10 @@ void handle_firmware_upload()
     }
     else if (_authenticatedUpdate && upload.status == UPLOAD_FILE_END && !_updaterError.length())
     {
+        otaSession.endReceiving();
+#ifdef ESP8266
+        uploadIdleTimer.detach();
+#endif
         Serial.print("\n"); // newline after last of the dot dot dots
         if (!verify)
         {
@@ -2143,13 +2148,10 @@ void handle_firmware_upload()
     }
     else if (_authenticatedUpdate && upload.status == UPLOAD_FILE_ABORTED)
     {
-        if (!verify)
-        {
-            otaSession.endReceiving();
+        otaSession.endReceiving();
 #ifdef ESP8266
-            uploadIdleTimer.detach();
+        uploadIdleTimer.detach();
 #endif
-        }
         fail_firmware_upload(verify ? "Verification upload aborted." : "Firmware upload aborted.", !verify);
     }
 }
