@@ -1,6 +1,14 @@
 --- a/src/arduino_homekit_server.cpp
 +++ b/src/arduino_homekit_server.cpp
-@@ -170,7 +170,9 @@
+@@ -5,6 +5,7 @@
+ #include <WiFiClient.h>
+ #include <ESP8266mDNS.h>
+ #include <LEAmDNS.h>
++#include <lwip/tcp.h>
+ 
+ #include <wolfssl/wolfcrypt/settings.h>
+ #include <homekit/homekit.h>
+@@ -170,7 +171,9 @@
  // client_context new and free
  //============================
  client_context_t* client_context_new(WiFiClient *wifiClient) {
@@ -11,7 +19,7 @@
  	c->server = NULL;
  	c->endpoint_params = NULL;
  
-@@ -190,8 +192,12 @@
+@@ -190,8 +193,12 @@
  
  	//c->event_queue = xQueueCreate(20, sizeof(characteristic_event_t*));
  	c->event_queue = (Queue_t*) malloc(sizeof(Queue_t));
@@ -26,7 +34,7 @@
  
  	c->verify_context = NULL;
  
-@@ -210,8 +216,7 @@
+@@ -210,8 +217,7 @@
  		pair_verify_context_free(c->verify_context);
  
  	if (c->event_queue) {
@@ -36,44 +44,116 @@
  		q_kill(c->event_queue);
  		free(c->event_queue);
  	}
-@@ -528,7 +533,9 @@
+@@ -528,26 +534,79 @@
  }
  
  void write(client_context_t *context, byte *data, int data_size) {
 -	if ((!context) || (!context->socket) || (!context->socket->connected())) {
-+	if (!context)
-+		return;
-+	if ((!context->socket) || (!context->socket->connected())) {
- 		CLIENT_ERROR(context, "The socket is null! (or is closed)");
- 		return;
- 	}
-@@ -541,9 +548,24 @@
- 		return;
- 	}
- 	CLIENT_VERBOSE(context, "Sending data of size %d", data_size);
-+	const uint32_t started = millis();
-+	const uint8_t tcp_before = context->socket->status();
-+	const int send_before = context->socket->availableForWrite();
- 	int write_size = context->socket->write(data, data_size);
- 	if (write_size != data_size) {
+-		CLIENT_ERROR(context, "The socket is null! (or is closed)");
+-		return;
+-	}
+-	if (context->disconnect) {
+-		context->error_write = true;
+-		return;
+-	}
+-	if (context->error_write) {
+-		CLIENT_ERROR(context, "Abort write data since error_write.");
+-		return;
+-	}
+-	CLIENT_VERBOSE(context, "Sending data of size %d", data_size);
+-	int write_size = context->socket->write(data, data_size);
+-	if (write_size != data_size) {
 -		CLIENT_ERROR(context, "socket.write, data_size=%d, write_size=%d", data_size, write_size);
-+		// Capture transport state before logging or our own stop() changes it.
-+		// No payload, query string, pairing identifier or key is logged.
-+		const uint32_t elapsed = millis() - started;
-+		const uint8_t tcp_after = context->socket->status();
-+		const bool connected = context->socket->connected();
-+		const int send_after = context->socket->availableForWrite();
-+		CLIENT_ERROR(context, "HKTX short phase=%s ep=%u step=%u enc=%u want=%d sent=%d ms=%lu tcp=%u->%u conn=%u snd=%d->%d heap=%u max=%u frag=%u",
-+			context->sending_events ? "event" : "response",
-+			(unsigned)context->endpoint, (unsigned)context->step, (unsigned)context->encrypted,
-+			data_size, write_size, (unsigned long)elapsed,
-+			(unsigned)tcp_before, (unsigned)tcp_after, (unsigned)connected,
-+			send_before, send_after, (unsigned)ESP.getFreeHeap(),
-+			(unsigned)ESP.getMaxFreeBlockSize(), (unsigned)ESP.getHeapFragmentation());
- 		context->error_write = true;
- 		//context->socket->keepAlive(1, 1, 1);	// fast disconnected internally in 1 second.
- 		context->socket->stop();
-@@ -678,29 +700,14 @@
+-		context->error_write = true;
+-		//context->socket->keepAlive(1, 1, 1);	// fast disconnected internally in 1 second.
+-		context->socket->stop();
+-	}
++    if (!context || context->error_write)
++        return;
++    if (context->disconnect || !context->socket || !context->socket->connected()) {
++        context->error_write = true;
++        return;
++    }
++    if (data_size <= 0)
++        return;
++
++    // Retain the exact source bytes until accepted AND acknowledged. With
++    // setSync(true), lwIP borrows this buffer instead of copying it. The core's
++    // write() ignores a failed ACK wait, so even a full return count needs flush.
++    const uint32_t timeout_ms = context->socket->getTimeout();
++    const uint32_t budget_ms = timeout_ms > 2000 ? timeout_ms : 2000;
++    const unsigned max_attempts = 8;
++    const uint32_t started = millis();
++    const uint8_t tcp_before = context->socket->status();
++    const int send_before = context->socket->availableForWrite();
++    size_t sent = 0;
++    unsigned attempts = 0;
++    bool acked = false;
++    while (sent < (size_t)data_size && attempts < max_attempts &&
++           uint32_t(millis() - started) < budget_ms && context->socket->status() == ESTABLISHED) {
++        ++attempts;
++        const size_t remaining = (size_t)data_size - sent;
++        const size_t accepted = context->socket->write(data + sent, remaining);
++        if (accepted > remaining)
++            break; // defensive: never advance outside the source frame
++        sent += accepted;
++        if (sent < (size_t)data_size)
++            delay(1); // allow network callbacks; do not busy-spin on zero progress
++    }
++    while (sent == (size_t)data_size && context->socket->status() == ESTABLISHED) {
++        const uint32_t elapsed = millis() - started;
++        if (elapsed >= budget_ms)
++            break;
++        const uint32_t left = budget_ms - elapsed;
++        // Short ACK waits retain the buffer while checking the overall budget.
++        // The core can overrun a slice while progress continues: this is a retry
++        // budget checked between calls, not a hard real-time execution deadline.
++        if (context->socket->flush(left < 50 ? left : 50)) {
++            acked = context->socket->status() == ESTABLISHED;
++            break;
++        }
++        delay(1);
++    }
++    if (acked) {
++        // One recovery report per connection keeps chronic poor links from
++        // producing a line for every recovered JSON chunk.
++        if (attempts > 1 && !context->reported_write_recovery) {
++            context->reported_write_recovery = true;
++            CLIENT_INFO(context, "HKTX recovered phase=%s ep=%u bytes=%u tries=%u ms=%lu",
++                context->sending_events ? "event" : "response", (unsigned)context->endpoint,
++                (unsigned)sent, attempts, (unsigned long)(millis() - started));
++        }
++        return;
++    }
++
++    // Capture evidence before aborting. No payload, query, pairing ID or key.
++    const uint32_t elapsed = millis() - started;
++    const uint8_t tcp_after = context->socket->status();
++    const bool connected = context->socket->connected();
++    const int send_after = context->socket->availableForWrite();
++    CLIENT_ERROR(context, "HKTX failed phase=%s ep=%u want=%d sent=%u tries=%u ack=%u ms=%lu tcp=%u->%u conn=%u snd=%d->%d heap=%u max=%u frag=%u",
++        context->sending_events ? "event" : "response", (unsigned)context->endpoint,
++        data_size, (unsigned)sent, attempts, (unsigned)acked, (unsigned long)elapsed,
++        (unsigned)tcp_before, (unsigned)tcp_after, (unsigned)connected,
++        send_before, send_after, (unsigned)ESP.getFreeHeap(),
++        (unsigned)ESP.getMaxFreeBlockSize(), (unsigned)ESP.getHeapFragmentation());
++    context->error_write = true;
++    // stop() may leave unacknowledged borrowed data queued after a failed flush.
++    // abort() releases it before the serializer can overwrite/free this buffer.
++    context->socket->abort();
+ }
+ 
+ int client_send_encrypted_(client_context_t *context,
+@@ -608,6 +667,8 @@
+ 		payload_offset += chunk_size;
+ 
+ 		write(context, encrypted, available + AAD_SIZE);
++		if (context->error_write)
++			return -1;
+ 	}
+ 
+ 	//free(encrypted);
+@@ -678,29 +739,14 @@
  		CLIENT_DEBUG(client, "This value is set by this client, no need to send notification");
  		return;
  	}
@@ -110,7 +190,7 @@
  }
  
  void client_send(client_context_t *context, byte *data, size_t data_size) {
-@@ -3083,6 +3090,12 @@
+@@ -3083,6 +3129,12 @@
  	}
  
  	client_context_t *context = client_context_new(wifiClient);
@@ -123,7 +203,7 @@
  	context->server = server;
  	context->socket = wifiClient;
  
-@@ -3098,86 +3111,41 @@
+@@ -3098,86 +3150,41 @@
  
  //设备向iPhone传递characteristic的消息
  void homekit_server_process_notifications(homekit_server_t *server) {
@@ -245,7 +325,7 @@
  }
  
  bool homekit_client_need_process_data(client_context_t *context) {
-@@ -3201,10 +3169,11 @@
+@@ -3201,10 +3208,11 @@
  //				CLIENT_INFO(context, "Step is %d", context->step);
  //			}
  //			delay(10);
@@ -279,11 +359,12 @@
  
  struct _client_context_t {
  	homekit_server_t *server;
-@@ -128,6 +125,7 @@
+@@ -128,6 +125,8 @@
  
  	homekit_client_step_t step; // WangBin added
  	bool error_write; // WangBin added
 +	bool sending_events; // distinguish notifications from responses in write diagnostics
++	bool reported_write_recovery; // at most one recovery log per connection
  
  	struct _client_context_t *next;
  };

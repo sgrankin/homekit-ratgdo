@@ -4,11 +4,11 @@
   "files": {
     "src/arduino_homekit_server.cpp": {
       "before": "f0d15fba004410d60ff20cad285ce7e32403b42d5e4a865896e306fe0bd31bc4",
-      "after": "a8a9b610d097231609757b40df95fb2d6adec5957741743cf4d99863cac9a610"
+      "after": "a1caf198cae28d3a2bdfe3d2a817d843a279abf723e8a38c511a7e262758766b"
     },
     "src/arduino_homekit_server.h": {
       "before": "fa86563d156f700299ca6136f470470ce88f32657174fdd01931793fc7f48e40",
-      "after": "e3f0337740deada21d60f5f430df2e064adc4dbd62c85662952889d31060b407"
+      "after": "fe79332d61d264c0c9bdd1e1bb7ece312e55b1427dfac2843797673f55883d60"
     },
     "src/homekit_event_queue.h": {
       "before": null,

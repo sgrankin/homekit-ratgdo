@@ -11,8 +11,11 @@ as of this review. The library pin alone cannot supply these fixes.
 - propagates event/value/client/list allocation failures, requesting a client reconnect;
 - transfers values when creating the send list instead of allocating extra deep copies;
 - saves the next client before processing can free the current client;
-- logs failed HomeKit writes with transport/heap state captured before closing
-  the socket; see [diagnostic fields](../../docs/homekit-write-diagnostics.md).
+- retries unsent HomeKit bytes within a budget and confirms acknowledgement before
+  source-buffer reuse; aborts failed streams to release borrowed storage;
+- logs a bounded recovery/failure summary; see
+  [transport review](../../docs/wifi-release-review.md) and
+  [diagnostic fields](../../docs/homekit-write-diagnostics.md).
 
 The PlatformIO pre-script applies it after dependency installation and before
 compilation. `manifest.json` records SHA-256 of every changed file before and after

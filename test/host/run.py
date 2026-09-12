@@ -101,7 +101,9 @@ def build_homekit(compiler, flags, source, tmp):
     (tmp / "homekit_handlers.inc").write_text("\n".join(function(code, sig) for sig in signatures))
     write_signature = "void write(client_context_t *context, byte *data, int data_size)"
     write_code = code.replace(write_signature + " {", write_signature + "\n{")
-    (tmp / "homekit_write.inc").write_text(function(write_code, write_signature))
+    encrypted_signature = "int client_send_encrypted_(client_context_t *context,\n\t\tbyte *payload, size_t size)"
+    write_code = write_code.replace(encrypted_signature + " {", encrypted_signature + "\n{")
+    (tmp / "homekit_write.inc").write_text(function(write_code, write_signature) + "\n" + function(write_code, encrypted_signature))
     run(compiler + flags + ["-I", tmp, ROOT / "test/host/homekit_write.cpp", "-o", tmp / "homekit_write"])
     run([tmp / "homekit_write"])
     header = (source / "src/arduino_homekit_server.h").read_text()

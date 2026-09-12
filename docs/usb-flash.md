@@ -1,7 +1,9 @@
 # USB installation of the local ESP8266 build
 
-Prepared 2026-09-11. These commands have been checked against locally installed
-esptool 5.1.0; no serial connection, backup or flash has been performed.
+Updated 2026-09-11. These commands use locally installed esptool 5.1.0. This
+procedure successfully installed local2 with a verified full backup and confirmed
+preservation of flash outside the firmware region. The prepared local3 image
+below has not yet been installed.
 
 ## Physical preparation
 
@@ -35,9 +37,9 @@ The tool is already installed in a repository-local virtual environment. To
 recreate it: `python3 -m venv .cache/usb-tools`, then
 `.cache/usb-tools/bin/python -m pip install esptool==5.1.0`.
 
-Prepared firmware: `2.2.4-local2`, 800,192-byte file, ESP8266 image with 4 MB/DIO/
+Prepared firmware: `2.2.4-local3`, 800,320-byte file, ESP8266 image with 4 MB/DIO/
 40 MHz header. Expected SHA-256:
-`79f4bd30c5f2033ccb581b33e17b7ebec145104ee45dbe227a44013221a6999e`.
+`14ba2de82be97d70bb39b0d9fb8a3b066498c449d0b57662cd3d071c3dcb0e97`.
 The file size includes image overhead and differs from the build's flash-usage
 figure. Keep its matching `.cache/firmware/firmware.elf` for crash decoding.
 
@@ -87,7 +89,7 @@ are compatible in the reviewed sources; verify retention after boot.
 
 After successful verification, unplug/replug USB to boot. Give it about a minute,
 then check the existing IP/hostname (DHCP may change it), hard-refresh the web UI,
-and confirm `2.2.4-local2`, Wi-Fi, retained settings and HomeKit pairing. Opener
+and confirm `2.2.4-local3`, Wi-Fi, retained settings and HomeKit pairing. Opener
 state/communications are not meaningful while disconnected. Do not reset pairing
 just because Home reports an unavailable door during bench testing.
 

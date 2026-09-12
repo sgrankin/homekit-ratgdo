@@ -20,10 +20,13 @@ physical-device update is part of the build/test workflow.
   or an oversized file does not stop services and does not require a reboot.
 - Successful query-parameter uploads preserve the existing explicit-reboot API.
   Legacy successful uploads without query parameters still reboot automatically.
+- HomeKit sends retain and retry unsent bytes, confirm ACK completion before
+  buffer reuse, and abort safely when the retry budget is exhausted. See the
+  [release and transport review](wifi-release-review.md).
 - The pinned HomeKit library has a checked local patch for event ownership,
   allocation failures, notification ordering and safe traversal when clients close.
   See [the dependency patch](../patches/homekit/README.md).
-- Default ESP8266 builds identify themselves as **`2.2.4-local2`**, derived from the
+- Default ESP8266 builds identify themselves as **`2.2.4-local3`**, derived from the
   upstream manifest plus `VERSION_TAG`. Increase the local suffix when preparing
   another installed build; the upstream manifest remains untouched.
 
@@ -99,11 +102,13 @@ an actual GitHub Actions run; local validation is separate.
 
 Validated locally on 2026-09-11: host regression tests passed with ASan/UBSan,
 including 1,000 HomeKit burst/disconnect cycles. The ARM Linux build of
-`ratgdo_esp8266_hV25` succeeded as `2.2.4-local2`, using 47,088 bytes of static RAM
-and 796,035 bytes of flash. The final build reused cached pinned dependencies;
+`ratgdo_esp8266_hV25` succeeded as `2.2.4-local3`, using 47,088 bytes of static RAM
+and 796,171 bytes of flash. The final build reused cached pinned dependencies;
 its recorded source hashes match the tested working tree. Firmware SHA-256:
-`79f4bd30c5f2033ccb581b33e17b7ebec145104ee45dbe227a44013221a6999e`.
-No hardware flashing or live OTA validation was performed.
+`14ba2de82be97d70bb39b0d9fb8a3b066498c449d0b57662cd3d071c3dcb0e97`.
+This local3 build has not been flashed or tested with live OTA. The preceding
+local2 build was installed by USB, with full backup and preserved-region
+verification; the user confirmed ordinary opening/closing afterward.
 
 ## Updating from upstream with jj
 

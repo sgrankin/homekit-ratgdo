@@ -1,4 +1,21 @@
-# HomeKit write diagnostics (2.2.4-local2)
+# HomeKit write diagnostics
+
+## local3 transport changes
+
+The original `HKTX short` example below is from local2. In local3, temporary short
+writes are retried with the same bytes. `HKTX recovered` is emitted at most once
+per connection and includes phase, endpoint, total bytes, write-call count and
+duration. Successful single-call sends stay quiet.
+
+Terminal failures use `HKTX failed`, with `sent` now the cumulative accepted byte
+count and `tries` the number of write calls. `ack=0` means buffer acknowledgement
+was not confirmed, even if all bytes were accepted. TCP/send-buffer/heap fields
+are captured before aborting. The `step` and `enc` fields are omitted to keep the
+expanded record compact. Further sends on the failed context produce no cascade
+of socket-closed messages. See the [release and transport review](wifi-release-review.md)
+for retry budgets, ACK ownership and remaining limitations.
+
+## local2 diagnostic baseline
 
 A failed write now produces one `HKTX short` error record before the library
 closes its socket. Successful writes produce no additional log records. The
