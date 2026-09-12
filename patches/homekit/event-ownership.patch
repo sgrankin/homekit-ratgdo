@@ -44,7 +44,18 @@
  		q_kill(c->event_queue);
  		free(c->event_queue);
  	}
-@@ -528,26 +534,79 @@
+@@ -223,7 +229,9 @@
+ 		free(c->body);
+ 
+ 	if (c->socket) {
+-		c->socket->stop();
++		// Teardown must release TCP buffers even when the peer has vanished.
++		// Successful writes already waited for ACKs; failed writes already abort.
++		c->socket->abort();
+ 		delete c->socket;
+ 		c->socket = nullptr;
+ 	}
+@@ -528,26 +536,79 @@
  }
  
  void write(client_context_t *context, byte *data, int data_size) {
@@ -144,7 +155,7 @@
  }
  
  int client_send_encrypted_(client_context_t *context,
-@@ -608,6 +667,8 @@
+@@ -608,6 +669,8 @@
  		payload_offset += chunk_size;
  
  		write(context, encrypted, available + AAD_SIZE);
@@ -153,7 +164,7 @@
  	}
  
  	//free(encrypted);
-@@ -678,29 +739,14 @@
+@@ -678,29 +741,14 @@
  		CLIENT_DEBUG(client, "This value is set by this client, no need to send notification");
  		return;
  	}
@@ -190,7 +201,7 @@
  }
  
  void client_send(client_context_t *context, byte *data, size_t data_size) {
-@@ -3083,6 +3129,12 @@
+@@ -3083,6 +3131,12 @@
  	}
  
  	client_context_t *context = client_context_new(wifiClient);
@@ -203,7 +214,7 @@
  	context->server = server;
  	context->socket = wifiClient;
  
-@@ -3098,86 +3150,41 @@
+@@ -3098,86 +3152,41 @@
  
  //设备向iPhone传递characteristic的消息
  void homekit_server_process_notifications(homekit_server_t *server) {
@@ -325,7 +336,7 @@
  }
  
  bool homekit_client_need_process_data(client_context_t *context) {
-@@ -3201,10 +3208,11 @@
+@@ -3201,10 +3210,11 @@
  //				CLIENT_INFO(context, "Step is %d", context->step);
  //			}
  //			delay(10);

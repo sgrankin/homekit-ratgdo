@@ -106,6 +106,11 @@ def build_homekit(compiler, flags, source, tmp):
     (tmp / "homekit_write.inc").write_text(function(write_code, write_signature) + "\n" + function(write_code, encrypted_signature))
     run(compiler + flags + ["-I", tmp, ROOT / "test/host/homekit_write.cpp", "-o", tmp / "homekit_write"])
     run([tmp / "homekit_write"])
+    teardown = "void client_context_free(client_context_t *c)"
+    teardown_code = code.replace(teardown + " {", teardown + "\n{")
+    (tmp / "homekit_teardown.inc").write_text(function(teardown_code, teardown))
+    run(compiler + flags + ["-I", tmp, ROOT / "test/host/homekit_teardown.cpp", "-o", tmp / "homekit_teardown"])
+    run([tmp / "homekit_teardown"])
     header = (source / "src/arduino_homekit_server.h").read_text()
     start = header.index("typedef struct _client_event {")
     end = header.index("} client_event_t;", start) + len("} client_event_t;")

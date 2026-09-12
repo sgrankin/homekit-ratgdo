@@ -4,7 +4,7 @@
   "files": {
     "src/arduino_homekit_server.cpp": {
       "before": "f0d15fba004410d60ff20cad285ce7e32403b42d5e4a865896e306fe0bd31bc4",
-      "after": "a1caf198cae28d3a2bdfe3d2a817d843a279abf723e8a38c511a7e262758766b"
+      "after": "2db3f94d41ef17b997638ee25be1ee270b14808cf2db8dc6b1a27724d7fd4941"
     },
     "src/arduino_homekit_server.h": {
       "before": "fa86563d156f700299ca6136f470470ce88f32657174fdd01931793fc7f48e40",
