@@ -56,6 +56,12 @@ homekit_characteristic_t light_state = HOMEKIT_CHARACTERISTIC_(
 homekit_characteristic_t motion_detected = HOMEKIT_CHARACTERISTIC_(
     MOTION_DETECTED, false);
 
+// Fixed IDs outside the existing auto-assigned range preserve old service IDs.
+homekit_characteristic_t garage_left_open = HOMEKIT_CHARACTERISTIC_(
+    CONTACT_SENSOR_STATE, 0, .id = 102);
+homekit_characteristic_t garage_close_failed = HOMEKIT_CHARACTERISTIC_(
+    CONTACT_SENSOR_STATE, 0, .id = 112);
+
 // Declare and define the accessory
 homekit_accessory_t *accessories[] = {
     HOMEKIT_ACCESSORY(.id = 1, .category = homekit_accessory_category_garage, .services = (homekit_service_t *[]){
@@ -91,6 +97,18 @@ homekit_accessory_t *accessories[] = {
             &motion_detected,
             NULL
         }),
+        HOMEKIT_SERVICE(CONTACT_SENSOR, .id = 100, .characteristics = (homekit_characteristic_t *[])
+        {
+            HOMEKIT_CHARACTERISTIC(NAME, "Garage Left Open", .id = 101),
+            &garage_left_open,
+            NULL
+        }),
+        HOMEKIT_SERVICE(CONTACT_SENSOR, .id = 110, .characteristics = (homekit_characteristic_t *[])
+        {
+            HOMEKIT_CHARACTERISTIC(NAME, "Garage Close Failed", .id = 111),
+            &garage_close_failed,
+            NULL
+        }),
         NULL
     }),
     NULL
@@ -99,4 +117,5 @@ homekit_accessory_t *accessories[] = {
 // Overall HomeKit server config
 homekit_server_config_t config  = {
     .accessories = accessories,
+    .config_number = 5, // New contact services; keep pairing and existing IDs.
 };

@@ -65,6 +65,7 @@ constexpr char cfg_passwordRequired[] PROGMEM = "passwordRequired";
 constexpr char cfg_wwwUsername[] PROGMEM = "wwwUsername";
 constexpr char cfg_wwwCredentials[] PROGMEM = "wwwCredentials";
 constexpr char cfg_GDOSecurityType[] PROGMEM = "GDOSecurityType";
+constexpr char cfg_leftOpenMinutes[] PROGMEM = "leftOpenMinutes";
 constexpr char cfg_TTCseconds[] PROGMEM = "TTCseconds";
 constexpr char cfg_TTClight[] PROGMEM = "TTClight";
 constexpr char cfg_rebootSeconds[] PROGMEM = "rebootSeconds";
@@ -191,6 +192,11 @@ public:
     const char *getwwwUsername() { return (std::get<configStr>(get(cfg_wwwUsername)).str); };
     const char *getwwwCredentials() { return (std::get<configStr>(get(cfg_wwwCredentials)).str); };
     uint32_t getGDOSecurityType() { return std::get<int>(get(cfg_GDOSecurityType)); };
+    uint32_t getLeftOpenMinutes()
+    {
+        int minutes = std::get<int>(get(cfg_leftOpenMinutes));
+        return minutes < 0 ? 0 : (minutes > 1440 ? 1440 : minutes);
+    }
     uint32_t getTTCseconds() { return std::get<int>(get(cfg_TTCseconds)); };
     bool getTTClight() { return std::get<bool>(get(cfg_TTClight)); };
     uint32_t getRebootSeconds() { return std::get<int>(get(cfg_rebootSeconds)); };

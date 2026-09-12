@@ -2608,6 +2608,16 @@ void door_command(DoorAction action)
 
 #endif // not USE_GDOLIB
 
+#ifndef USE_GDOLIB
+void close_completion_timeout()
+{
+    // A missing completion message is not proof of closure.
+    ESP_LOGW(TAG, "Door close completion not confirmed; requesting status");
+    pendingDoorCommand = false;
+    send_get_status();
+}
+#endif
+
 void door_command_close()
 {
     // cancel partial open
@@ -2644,18 +2654,7 @@ void door_command_close()
         // We may miss a notification which is why we have this test.
         // Sec+1.0 doors send a constant stream of status, so we get door uppdate every 500ms, so no need for this.
         checkDoorCompleted.detach(); // just in case.
-        checkDoorCompleted.once_ms((garage_door.closeDuration + 3) * 1000, []()
-                                   {
-                                       // If this timer fires (was not cancelled when we get notification that door has stopped) then
-                                       // we probably missed a status mesage, assume it's closed.
-                                       ESP_LOGW(TAG, "Door did not close in expected time, assuming it is closed");
-                                       pendingDoorCommand = false;
-                                       notify_homekit_current_door_state_change(GarageDoorCurrentState::CURR_CLOSED);
-                                       if (!wpDisconnectOnTx)
-                                           digitalWrite(STATUS_DOOR_PIN, LOW);
-                                       notify_homekit_target_door_state_change(GarageDoorTargetState::TGT_CLOSED);
-                                       send_get_status(); // query in case we're wrong and it's stopped (Sec+2.0)
-                                   });
+        checkDoorCompleted.once_ms((garage_door.closeDuration + 3) * 1000, close_completion_timeout);
     }
     // Check door starts to close
     checkDoorMoving.detach(); // just in case!
@@ -2666,6 +2665,9 @@ void door_command_close()
                                 checkDoorCompleted.detach();
                                 pendingDoorCommand = false;
                                 ESP_LOGE(TAG, "Door is supposed to be closing but is not.  Current state: %s", DOOR_STATE(garage_door.current_state));
+#ifdef ESP8266
+                                notify_homekit_close_did_not_start();
+#endif
                                 notify_homekit_current_door_state_change(garage_door.current_state);
                                 if (!wpDisconnectOnTx)
                                     digitalWrite(STATUS_DOOR_PIN, garage_door.current_state == GarageDoorCurrentState::CURR_CLOSED ? LOW : HIGH); });

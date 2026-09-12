@@ -28,6 +28,8 @@ extern homekit_characteristic_t current_lock_state;
 extern homekit_characteristic_t target_lock_state;
 extern homekit_characteristic_t light_state;
 extern homekit_characteristic_t motion_detected;
+extern homekit_characteristic_t garage_left_open;
+extern homekit_characteristic_t garage_close_failed;
 
 #ifdef __cplusplus
 }

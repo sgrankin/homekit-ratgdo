@@ -44,9 +44,9 @@ The tool is already installed in a repository-local virtual environment. To
 recreate it: `python3 -m venv .cache/usb-tools`, then
 `.cache/usb-tools/bin/python -m pip install esptool==5.1.0`.
 
-Installed firmware: `2.2.4-local4`, 800,624-byte file, ESP8266 image with 4 MB/DIO/
+Prepared firmware: `2.2.4-local5`, 802,400-byte file, ESP8266 image with 4 MB/DIO/
 40 MHz header. Expected SHA-256:
-`7927701987d131ced0a080f51d84ae6930466d6e6b3085ae3519590611de73ad`.
+`49621883830450bc50b50fa96db07c55806acbf8c49023993a010846d08652a8`.
 The file size includes image overhead and differs from the build's flash-usage
 figure. Keep its matching `.cache/firmware/firmware.elf` for crash decoding.
 
@@ -96,7 +96,7 @@ are compatible in the reviewed sources; verify retention after boot.
 
 After successful verification, unplug/replug USB to boot. Give it about a minute,
 then check the existing IP/hostname (DHCP may change it), hard-refresh the web UI,
-and confirm `2.2.4-local4`, Wi-Fi, retained settings and HomeKit pairing. Opener
+and confirm `2.2.4-local5`, Wi-Fi, retained settings and HomeKit pairing. Opener
 state/communications are not meaningful while disconnected. Do not reset pairing
 just because Home reports an unavailable door during bench testing.
 

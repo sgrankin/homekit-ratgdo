@@ -34,6 +34,7 @@ extern bool homekit_setup_done;
 #ifdef ESP8266
 // On ESP8266 we have our own HomeKit module
 void homekit_loop();
+void notify_homekit_close_did_not_start();
 
 #else // not ESP8266
 // One ESP32 we use HomeSpan module.

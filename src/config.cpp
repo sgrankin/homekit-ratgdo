@@ -27,6 +27,7 @@
 // RATGDO project includes
 #include "ratgdo.h"
 #include "config.h"
+#include "door_alerts.h"
 #include "utilities.h"
 #include "comms.h"
 #include "led.h"
@@ -120,6 +121,7 @@ static configSetting settings_defaults[] PROGMEM = {
     //  Credentials are MD5 Hash... server.credentialHash(username, realm, "password");
     {cfg_wwwCredentials, false, false, (configStr){sizeof(credentialsBuf), credentialsBuf}, NULL},
     {cfg_GDOSecurityType, true, false, 2, helperGDOSecurityType}, // call fn to reset door
+    {cfg_leftOpenMinutes, false, false, 15, NULL},
     {cfg_TTCseconds, false, false, 5, NULL},
     {cfg_TTClight, false, false, true, NULL},
     {cfg_rebootSeconds, true, true, 0, NULL},
@@ -809,6 +811,8 @@ bool userSettings::set(const std::string &key, const bool value)
 
 bool userSettings::set(const std::string &key, const int value)
 {
+    if (key == cfg_leftOpenMinutes && (value < 0 || value > 1440))
+        return false;
     bool rc = false;
     TAKE_MUTEX();
     configSetting *setting = getDetail(key);
@@ -841,6 +845,11 @@ bool userSettings::set(const std::string &key, const int value)
 
 bool userSettings::set(const std::string &key, const char *value)
 {
+    if (key == cfg_leftOpenMinutes)
+    {
+        int minutes;
+        return parseLeftOpenMinutes(value, minutes) && set(key, minutes);
+    }
     bool rc = false;
     TAKE_MUTEX();
     configSetting *setting = getDetail(key);

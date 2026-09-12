@@ -17,6 +17,7 @@
 #ifdef ESP8266
 #include <arduino_homekit_server.h>
 #include <ESP8266WiFi.h>
+#include "door_alerts.h"
 #endif // ESP8266
 
 // RATGDO project includes
@@ -40,6 +41,32 @@
 
 // Logger tag
 static const char *TAG = "ratgdo-homekit";
+#ifdef ESP8266
+static DoorAlerts doorAlerts;
+static volatile bool closeDidNotStart = false;
+void notify_homekit_close_did_not_start()
+{
+    closeDidNotStart = true; // Defer the timer callback's alert to the main loop.
+}
+static void update_door_alerts()
+{
+    doorAlerts.update(garage_door.current_state, static_cast<uint32_t>(_millis()),
+                      userConfig->getLeftOpenMinutes());
+    if (!homekit_setup_done || !arduino_homekit_get_running_server())
+        return;
+    homekit_characteristic_t *characteristics[] = {&garage_left_open, &garage_close_failed};
+    const bool values[] = {doorAlerts.leftOpen(), doorAlerts.closeFailed()};
+    for (unsigned i = 0; i < 2; ++i)
+    {
+        if (characteristics[i]->value.uint8_value != values[i])
+        {
+            characteristics[i]->value = HOMEKIT_UINT8_CPP(values[i] ? 1 : 0);
+            homekit_characteristic_notify(characteristics[i], characteristics[i]->value);
+        }
+    }
+}
+#endif
+
 char qrPayload[21];
 bool homekit_setup_done = false;
 
@@ -237,6 +264,8 @@ void setup_homekit()
     homekit_service_t **services = config.accessories[0]->services;
     homekit_service_t *light_service = services[2];
     homekit_service_t *motion_service = services[3];
+    homekit_service_t *left_open_service = services[4];
+    homekit_service_t *close_failed_service = services[5];
     int index = 2; // services[0] (Accessory Information) and services[1] (Garage Door) are always present
     if (show_light)
     {
@@ -246,6 +275,8 @@ void setup_homekit()
     {
         services[index++] = motion_service;
     }
+    services[index++] = left_open_service;
+    services[index++] = close_failed_service;
     services[index] = NULL;
 
     arduino_homekit_setup(&config);
@@ -257,6 +288,13 @@ void homekit_loop()
     if (!homekit_setup_done && !comms_status_done)
         return;
 
+    if (closeDidNotStart)
+    {
+        closeDidNotStart = false;
+        if (garage_door.current_state != CURR_CLOSED)
+            doorAlerts.closeDidNotStart();
+    }
+    update_door_alerts();
     arduino_homekit_loop();
 }
 
@@ -1380,6 +1418,9 @@ void notify_homekit_target_door_state_change(GarageDoorTargetState state)
 void notify_homekit_current_door_state_change(GarageDoorCurrentState state)
 {
     garage_door.current_state = state;
+#ifdef ESP8266
+    update_door_alerts();
+#endif
     // Ignore invalid states
     if (state == 0xFF)
         return;

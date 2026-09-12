@@ -39,6 +39,9 @@ def main():
                   "--ld-path=" + subprocess.check_output(["xcrun", "--find", "ld"], text=True).strip()]
     with tempfile.TemporaryDirectory(prefix="ratgdo-host-") as tmp:
         tmp = Path(tmp)
+        (tmp / "close_timeout.inc").write_text(function((ROOT / "src/comms.cpp").read_text(), "void close_completion_timeout()"))
+        run(compiler + flags + ["-I", ROOT / "src", "-I", tmp, ROOT / "test/host/door_alerts.cpp", "-o", tmp / "door_alerts"])
+        run([tmp / "door_alerts"])
         source = (ROOT / "src/web.cpp").read_text()
         handlers = function(source, "void announce_mdns()")
         handlers += "\n" + source[source.index("#ifdef ESP8266\nstatic bool uploadTimeoutLogged"):]
@@ -111,6 +114,10 @@ def build_homekit(compiler, flags, source, tmp):
     (tmp / "homekit_teardown.inc").write_text(function(teardown_code, teardown))
     run(compiler + flags + ["-I", tmp, ROOT / "test/host/homekit_teardown.cpp", "-o", tmp / "homekit_teardown"])
     run([tmp / "homekit_teardown"])
+    firmware_code = (ROOT / "src/homekit.cpp").read_text()
+    start = firmware_code.index("    homekit_service_t **services = config.accessories[0]->services;")
+    end = firmware_code.index("    services[index] = NULL;", start) + len("    services[index] = NULL;")
+    (tmp / "homekit_service_list.inc").write_text(firmware_code[start:end])
     header = (source / "src/arduino_homekit_server.h").read_text()
     start = header.index("typedef struct _client_event {")
     end = header.index("} client_event_t;", start) + len("} client_event_t;")
@@ -125,6 +132,14 @@ def build_homekit(compiler, flags, source, tmp):
     run(compiler + flags + ["-I", source / "src", "-I", tmp,
         ROOT / "test/host/homekit.cpp", *objects, "-o", tmp / "homekit"])
     run([tmp / "homekit"])
+    declarations = tmp / "homekit_decl.o"
+    run(compiler + cflags + ["-x", "c", '-DAUTO_VERSION="test"', "-I", source / "src", "-I", ROOT / "src",
+        "-c", ROOT / "src/homekit_decl.c", "-o", declarations])
+    run(compiler + flags + ["-I", source / "src", "-I", ROOT / "src", "-I", tmp,
+        ROOT / "test/host/homekit_layout.cpp", declarations, *objects, "-o", tmp / "homekit_layout"])
+    for mask in range(4):
+        run([tmp / "homekit_layout", str(mask)])
+
 
 
 if __name__ == "__main__":

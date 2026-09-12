@@ -11,7 +11,7 @@ Local4 is installed. USB write and independent digest verification passed, follo
 by a successful unrestricted gzip OTA reflash in 39.097 seconds. Post-OTA status
 confirmed the door closed, retained pairing/accessory identity, one HomeKit client
 and unchanged crash count (1). The user reports substantially reduced packet loss.
-Leave local4 running for normal-use observation; no local5 is currently planned.
+Local5 adds two [door alert sensors](door-alerts.md); its firmware build and host regressions passed. The controller still runs local4; local5 has not been flashed.
 See the [OTA investigation](ota-transfer-investigation.md) for measured results
 and remaining uncertainty about the cause of improvement.
 
@@ -41,7 +41,7 @@ and remaining uncertainty about the cause of improvement.
   remaining TCP state to address the original vanished-peer heap-retention concern.
 - OTA idle timeout logs parser byte counts, updater progress, TCP state, unread
   data and heap once per stall. There is no new periodic or direct flash logging.
-- Default ESP8266 builds identify themselves as **`2.2.4-local4`**, derived from the
+- Default ESP8266 builds now target **`2.2.4-local5`**, derived from the
   upstream manifest plus `VERSION_TAG`. Increase the local suffix when preparing
   another installed build; the upstream manifest remains untouched.
 

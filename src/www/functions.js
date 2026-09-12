@@ -449,6 +449,9 @@ function setElementsFromStatus(status) {
             case "rebootSeconds":
                 document.getElementById("rebootHours").value = value / 60 / 60;
                 break;
+            case "leftOpenMinutes":
+                document.getElementById(key).value = value;
+                break;
             case "TTCseconds":
                 document.getElementById(key).value = (value <= 10) ? value : (value <= 20) ? (value - 10) / 5 + 10 : 21;
                 if (value > 0) {
@@ -1346,6 +1349,11 @@ function handleVehicleHomeKitToggle(checked) {
 }
 
 async function saveSettings() {
+    const leftOpenMinutes = Number(document.getElementById("leftOpenMinutes").value);
+    if (!Number.isInteger(leftOpenMinutes) || leftOpenMinutes < 0 || leftOpenMinutes > 1440) {
+        alert("Garage Left Open must be a whole number from 0 to 1440 minutes.");
+        return;
+    }
     let TTCseconds = Math.max(parseInt(document.getElementById("TTCseconds").value), 0);
     if (isNaN(TTCseconds)) TTCseconds = 0;
     TTCseconds = (TTCseconds <= 10) ? TTCseconds : (TTCseconds <= 20) ? ((TTCseconds - 10) * 5) + 10 : 300;
@@ -1477,6 +1485,7 @@ async function saveSettings() {
         "deviceName", newDeviceName,
         "wifiPhyMode", wifiPhyMode,
         "wifiPower", wifiPower,
+        "leftOpenMinutes", leftOpenMinutes,
         "TTCseconds", TTCseconds,
         "builtInTTC", builtInTTC,
         "TTClight", TTClight,

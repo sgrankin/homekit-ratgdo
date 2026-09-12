@@ -341,6 +341,21 @@
                 <td colspan="2">&nbsp;</td>
               </tr>
               <tr>
+                <td class="label">Garage Left Open:</td>
+                <td>
+                  <input type="number" id="leftOpenMinutes" name="leftOpenMinutes" min="0" max="1440"
+                    step="1" value="15" style="width:80px;"> minutes (0 = off)
+                  <div style="font-size:0.8em">Counts any time the door is not fully closed. Enable notifications
+                    for Garage Left Open in Apple Home.</div>
+                </td>
+              </tr>
+              <tr>
+                <td class="label">Garage Close Failed:</td>
+                <td style="font-size:0.8em">Reports a close command that does not start moving, a stop or reversal during closing,
+                  or closing for over 60 seconds. Clears when fully closed. Enable notifications in Apple Home.
+                  Intentional stops may also trigger this sensor. Neither sensor closes the door.</td>
+              </tr>
+              <tr>
                 <td class="label">Door Close Delay:</td>
                 <td>
                   <input type="range" min="0" max="21" value="5" id="TTCseconds" name="TTCseconds" class="slider"

@@ -35,6 +35,7 @@
   "crashCount": 1,
   "wifiPhyMode": 0,
   "wifiPower": 10,
+  "leftOpenMinutes": 15,
   "TTCseconds": 10,
   "builtInTTC": 900,
   "builtInTTCremaining": 0,

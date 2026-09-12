@@ -886,6 +886,7 @@ void build_status_json(char *json)
     JSON_ADD_INT(cfg_syslogPort, userConfig->getSyslogPort());
     JSON_ADD_INT(cfg_syslogFacility, userConfig->getSyslogFacility());
     JSON_ADD_INT(cfg_logLevel, userConfig->getLogLevel());
+    JSON_ADD_INT(cfg_leftOpenMinutes, userConfig->getLeftOpenMinutes());
     JSON_ADD_INT(cfg_TTCseconds, userConfig->getTTCseconds());
     JSON_ADD_BOOL(cfg_TTClight, userConfig->getTTClight());
     JSON_ADD_BOOL(cfg_lightHomeKit, userConfig->getLightHomeKit());
