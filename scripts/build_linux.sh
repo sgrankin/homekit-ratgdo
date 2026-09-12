@@ -11,7 +11,7 @@ git config user.name 'Local build'
 git config user.email build@localhost
 git add src/www
 git commit -qm 'Web content snapshot for asset cache keys'
-pio run -e ratgdo_esp8266_hV25 -j 2 > /artifacts/build.log 2>&1 || {
+pio run -e ratgdo_esp8266_hV25 -j 2 -v > /artifacts/build.log 2>&1 || {
     tail -80 /artifacts/build.log
     exit 1
 }

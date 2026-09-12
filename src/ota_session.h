@@ -12,9 +12,10 @@ public:
     static constexpr uint32_t uploadIdleMs = 30000;
     void receiving(uint32_t now) { receiving_ = true; lastProgress_ = now; }
     void endReceiving() { receiving_ = false; }
+    uint32_t idleMs(uint32_t now) const { return uint32_t(now - lastProgress_); }
     bool uploadTimedOut(uint32_t now) const
     {
-        return receiving_ && uint32_t(now - lastProgress_) >= uploadIdleMs;
+        return receiving_ && idleMs(now) >= uploadIdleMs;
     }
 
     bool servicesRunning() const { return !stopped_; }

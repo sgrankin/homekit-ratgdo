@@ -1810,12 +1810,25 @@ void SSEBroadcastState(const char *data, BroadcastType type)
 // Implement our own firmware update so can enforce MD5 check.
 // Based on HTTPUpdateServer
 #ifdef ESP8266
+static bool uploadTimeoutLogged = false;
 void check_upload_timeout()
 {
     // This runs from a scheduled yield callback, not inside the timer ISR.
     // Only close the socket; let the HTTP parser unwind and report ABORTED.
-    if (otaSession.uploadTimedOut(static_cast<uint32_t>(_millis())))
+    const uint32_t now = static_cast<uint32_t>(_millis());
+    if (otaSession.uploadTimedOut(now))
+    {
+        if (!uploadTimeoutLogged)
+        {
+            uploadTimeoutLogged = true;
+            const HTTPUpload &upload = server.upload();
+            ESP_LOGE(TAG, "OTA idle timeout: idle=%lu total=%zu partial=%zu flashed=%zu tcp=%u rx=%d heap=%u",
+                     static_cast<unsigned long>(otaSession.idleMs(now)), upload.totalSize,
+                     upload.currentSize, Update.progress(), firmwareUploadClient.status(),
+                     firmwareUploadClient.available(), ESP.getFreeHeap());
+        }
         firmwareUploadClient.stop();
+    }
 }
 // The core allocates a queue node when scheduling. Retry from the timer if
 // allocation fails; never close a TCP socket from the timer callback itself.
@@ -1834,6 +1847,7 @@ void note_upload_progress()
 {
     otaSession.receiving(static_cast<uint32_t>(_millis()));
 #ifdef ESP8266
+    uploadTimeoutLogged = false;
     uploadIdleTimer.once_ms(OtaSession::uploadIdleMs, schedule_upload_timeout);
 #endif
 }

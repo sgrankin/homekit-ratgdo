@@ -136,6 +136,45 @@ still complete. The controller problem is not specific to the Mac's Wi-Fi leg.
 Controller radio/firmware and its particular AP/mesh path remain unresolved.
 No firmware upload or device settings change was made from atom.
 
+## Prepared local4 changes
+
+The retry-limit rationale was verified in original commits 99f1d634 and
+64e137c8: a vanished peer could retain about 4 KiB of TCP heap for about thirty
+minutes. Local4 removes the custom archive, retains the framework's low-memory,
+low-flash/no-fragmentation configuration, and aborts HomeKit sockets on teardown
+so they cannot retain pending TCP state. Local3's bounded write/ACK handling is
+included. This is not a claim that ordinary HTTP connections have the same
+application-level bounds; observe heap under loss after deployment.
+
+Local4 also emits one `OTA idle timeout` record before closing a stalled upload:
+`idle` is milliseconds since the last full-buffer callback; `total` and `partial`
+are the multipart parser's completed and current firmware byte counts; `flashed`
+is the updater's written-byte progress (it excludes its buffered bytes); `tcp`
+is TCP state; `rx` is unread socket data; `heap` is free heap. Like existing
+errors this uses the normal logger; no periodic logging or new direct flash
+write is added. The existing recovery reboot can save the log as before.
+
+Host tests check the timeout record and suppress duplicates for the same stall,
+in addition to existing recovery/scheduling/rollover cases. The teardown test
+exercises the production function over 1000 vanished-peer sockets and would
+fail with graceful stop instead of abort. No device flash is part of this change.
+
+## Local4 installation and successful OTA reflash
+
+Local4 was subsequently installed and digest-verified over USB with user
+authorization. The user then authorized an OTA reflash and explicitly requested
+unrestricted upload speed. The gzip image was 575098 bytes, MD5
+`9ea0802a28f0ceaadfc3d81c12ac4f8e`, expanding to the verified 800624-byte image.
+The upload returned HTTP 200 and `Upload Success.` after 39.097 seconds. An
+explicit reboot completed installation. Post-boot status confirmed local4,
+uptime 27975 ms, door Closed, paired true, one HomeKit client, unchanged accessory
+identity and crashCount 1. The first boot-check connection timed out; the second
+succeeded. Thus OTA succeeded, but intermittent network trouble is not ruled out.
+
+TCP capture: `/tmp/ratgdo-local4-ota-capture.txt`, 2470 packets, no kernel drops.
+This single successful attempt does not isolate the cause of improvement: the
+firmware, reboot and USB/power circumstances changed since the failed attempts.
+
 If installing diagnostic firmware over USB, log one record when the idle guard
 fires: parser totalSize/currentSize, updater progress, TCP state, available RX,
 heap and elapsed time since the last callback. This avoids repetitive logging

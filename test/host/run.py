@@ -41,7 +41,7 @@ def main():
         tmp = Path(tmp)
         source = (ROOT / "src/web.cpp").read_text()
         handlers = function(source, "void announce_mdns()")
-        handlers += "\n" + source[source.index("#ifdef ESP8266\nvoid check_upload_timeout()"):]
+        handlers += "\n" + source[source.index("#ifdef ESP8266\nstatic bool uploadTimeoutLogged"):]
         (tmp / "ota_handlers.inc").write_text(handlers)
         run(compiler + flags + ["-I", ROOT / "src", "-I", tmp, ROOT / "test/host/ota.cpp", "-o", tmp / "ota"])
         run([tmp / "ota"])

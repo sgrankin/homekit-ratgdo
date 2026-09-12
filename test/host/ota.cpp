@@ -1,5 +1,7 @@
 // Real web.cpp handlers are included below; only hardware/network interfaces are fake.
 #include <cassert>
+#include <cstdio>
+#include <cstdarg>
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
@@ -10,7 +12,18 @@
 #include "json.h"
 #define ESP8266
 #define ESP_LOGI(...) ((void)0)
-#define ESP_LOGE(...) ((void)0)
+static std::vector<std::string> errorLogs;
+void captureError(const char *, const char *format, ...)
+{
+    char buffer[512];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    errorLogs.emplace_back(buffer);
+}
+#define TAG "test"
+#define ESP_LOGE(...) captureError(__VA_ARGS__)
 #define F(s) s
 #define PSTR(s) s
 #define TAKE_MUTEX()
@@ -105,6 +118,14 @@ struct Client
     {
         return true;
     }
+    unsigned status() const
+    {
+        return 4;
+    }
+    int available() const
+    {
+        return 123;
+    }
     void setNoDelay(bool) {}
 };
 struct Subscription
@@ -118,6 +139,10 @@ struct
 } Serial;
 struct
 {
+    unsigned getFreeHeap() const
+    {
+        return 22000;
+    }
     uint32_t space = 1298432;
     uint32_t getFreeSketchSpace()
     {
@@ -204,6 +229,10 @@ struct FakeUpdate
 {
     bool running = false, failBegin = false, failWrite = false, failEnd = false;
     unsigned begins = 0, ends = 0;
+    size_t progress() const
+    {
+        return 4096;
+    }
     bool begin(size_t, int)
     {
         ++begins;
@@ -254,6 +283,8 @@ static Client firmwareUploadClient;
 void reset()
 {
     otaSession = OtaSession();
+    errorLogs.clear();
+    uploadTimeoutLogged = false;
     uploadIdleTimer.detach();
     scheduledCallback = nullptr;
     schedulingFailures = 0;
@@ -431,6 +462,13 @@ int main()
     nowMs += 1;
     check_upload_timeout();
     assert(socketStops == 1 && !restarts);
+    assert(errorLogs.size() == 1);
+    assert(errorLogs[0].find("OTA idle timeout: idle=30000") == 0);
+    assert(errorLogs[0].find("partial=2048 flashed=4096 tcp=4 rx=123 heap=22000") !=
+           std::string::npos);
+    check_upload_timeout();
+    assert(errorLogs.size() == 1); // No repeated diagnostic for the same stall.
+
     event(UPLOAD_FILE_ABORTED);
     assertRecovery();
 
