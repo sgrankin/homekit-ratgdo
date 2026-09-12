@@ -39,6 +39,8 @@ def main():
                   "--ld-path=" + subprocess.check_output(["xcrun", "--find", "ld"], text=True).strip()]
     with tempfile.TemporaryDirectory(prefix="ratgdo-host-") as tmp:
         tmp = Path(tmp)
+        run(compiler + flags + ["-I", ROOT / "src", ROOT / "test/host/sec2_rx.cpp", "-o", tmp / "sec2_rx"])
+        run([tmp / "sec2_rx"])
         (tmp / "close_timeout.inc").write_text(function((ROOT / "src/comms.cpp").read_text(), "void close_completion_timeout()"))
         run(compiler + flags + ["-I", ROOT / "src", "-I", tmp, ROOT / "test/host/door_alerts.cpp", "-o", tmp / "door_alerts"])
         run([tmp / "door_alerts"])

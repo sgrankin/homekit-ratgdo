@@ -17,6 +17,9 @@
 
 // Arduino includes
 #include <Ticker.h>
+#ifdef ESP8266
+#include <Schedule.h>
+#endif
 
 // RATGDO project includes
 #include "ratgdo.h"
@@ -31,6 +34,7 @@
 #else // USE_GDOLIB
 #include "SoftwareSerial.h"
 #include "Reader.h"
+#include "sec2_rx.h"
 #include "secplus2.h"
 #include "Packet.h"
 #include "drycontact.h"
@@ -119,6 +123,23 @@ inline bool txQueuePop(PacketAction *pkt)
 
 // used by SEC+2.0
 SoftwareSerial sw_serial;
+#ifdef ESP8266
+static Sec2RxBuffer sec2Rx;
+static bool sec2RxScheduled = false;
+
+// Cooperative yield context only: no logging, transmission, decoding, or
+// HomeKit notifications here. read() is non-blocking and does not yield.
+bool service_sec2_rx()
+{
+    if (comms_setup_done && doorControlType == DOOR_CONTROL_SEC_PLUS_V2)
+        sec2Rx.pump(sw_serial, millis());
+    return true;
+}
+#endif
+static Sec2StatusRefresh sec2Refresh;
+static uint32_t sec2OverflowReported = 0;
+static uint32_t sec2LastOverflowLog = 0;
+static uint32_t sec2StatusQueries = 0;
 
 #endif // not USE_GDOLIB
 
@@ -637,6 +658,14 @@ void setup_comms()
         sw_serial.begin(9600, SWSERIAL_8N1, UART_RX_PIN, UART_TX_PIN, true, 32);
         sw_serial.enableIntTx(false);
         sw_serial.enableAutoBaud(true); // found in ratgdo/espsoftwareserial branch autobaud
+#ifdef ESP8266
+        sec2Rx.clear();
+        if (!sec2RxScheduled)
+            sec2RxScheduled = schedule_recurrent_function_us(service_sec2_rx, 5000);
+        if (!sec2RxScheduled)
+            ESP_LOGE(TAG, "Could not schedule Sec+2.0 receive service; main-loop fallback active");
+#endif
+        sec2Refresh.reset(millis());
 
         // read from flash, default of 0 if file not exist
         initialize_gdo_codes(read_door_int(nvram_id_code));
@@ -1785,15 +1814,48 @@ readIn:
  */
 void comms_loop_sec2()
 {
-    if (sw_serial.available())
+    const uint32_t nowMs = millis();
+#ifdef ESP8266
+    sec2Rx.pump(sw_serial, nowMs);
+    if (sec2Rx.takeLoss())
     {
-        uint8_t ser_data = sw_serial.read();
-        // spin on receiving data until the whole packet has arrived
-        // If we don't have a full packet yet, bail out now.
-        if (!reader.push_byte(ser_data))
-            return;
+        reader = SecPlus2Reader();
+        sec2Refresh.lost();
+    }
+    if (sec2Rx.overflows != sec2OverflowReported &&
+        (sec2OverflowReported == 0 || uint32_t(nowMs - sec2LastOverflowLog) >= 60000))
+    {
+        sec2OverflowReported = sec2Rx.overflows;
+        sec2LastOverflowLog = nowMs;
+        ESP_LOGW(TAG, "Sec+2.0 receive overflow: total=%lu max service gap=%lums",
+                 (unsigned long)sec2Rx.overflows, (unsigned long)sec2Rx.maxGapMs);
+    }
+#endif
+    const bool moving = garage_door.current_state == GarageDoorCurrentState::CURR_OPENING ||
+                        garage_door.current_state == GarageDoorCurrentState::CURR_CLOSING;
+    if (comms_status_done && txQueueCount() == 0 && sec2Refresh.due(nowMs, moving))
+    {
+        send_get_status();
+    }
 
-        static _millis_t lastStatusPkt = 0;
+    // Drain up to one complete packet per pass instead of just one byte.
+    // Decoding and notifications stay in the normal application loop.
+    for (unsigned bytes = 0; bytes < 64; ++bytes)
+    {
+#ifdef ESP8266
+        const int ser_data = sec2Rx.read();
+#else
+        const int ser_data = sw_serial.read();
+#endif
+        if (ser_data < 0)
+        {
+            process_send_queue();
+            break;
+        }
+        // spin on receiving data until the whole packet has arrived
+        // Continue through buffered bytes until a complete packet is ready.
+        if (!reader.push_byte(static_cast<uint8_t>(ser_data)))
+            continue;
         // We have a full packet, process it.
         Packet pkt = Packet(reader.fetch_buf());
         pkt.print();
@@ -1809,7 +1871,7 @@ void comms_loop_sec2()
 
         case PacketCommand::Status:
         {
-            lastStatusPkt = _millis();
+            sec2Refresh.received(millis());
             GarageDoorCurrentState current_state = garage_door.current_state;
             switch (pkt.m_data.value.status.door)
             {
@@ -2240,14 +2302,13 @@ void comms_loop_sec2()
             // If it has been more than 5 minutes since the last status packet then request GDO to resend one, or
             // if we are in the middle of an open or close sequence as we might have missed the state change to open or closed.
             // Similarly if we are waiting for a light or lock state change to be reflected in a status packet, we may have missed it.
-            if (_millis() - lastStatusPkt > (5 * 60 * 1000) ||
-                lastStatusPkt == 0 ||
+            if (!sec2Refresh.hasStatus || sec2Refresh.age(millis()) > 5 * 60 * 1000 ||
                 garage_door.current_state == GarageDoorCurrentState::CURR_OPENING ||
                 garage_door.current_state == GarageDoorCurrentState::CURR_CLOSING ||
                 pendingDoorCommand || pendingLightOn || pendingLightOff || pendingLockOn || pendingLockOff)
             {
-                ESP_LOGD(TAG, "Possibly missed a status packet, requesting GDO to resend");
-                send_get_status();
+                // Use the same bounded retry policy as receive overflows.
+                sec2Refresh.lost();
             }
             break;
         }
@@ -2257,11 +2318,7 @@ void comms_loop_sec2()
             ESP_LOGD(TAG, "Support for %s (0x%04X) packet unimplemented. Ignoring.", PacketCommand::to_string(pkt.m_pkt_cmd), pkt.m_pkt_cmd);
             break;
         }
-    }
-    else
-    {
-        // no incoming data, check if we have command queued
-        process_send_queue();
+        break;
     }
 
     if (!comms_status_done && comms_status_start && (_millis() - comms_status_start) > COMMS_STATUS_TIMEOUT)
@@ -2301,6 +2358,16 @@ void comms_loop_drycontact()
     }
 }
 #endif
+
+#if defined(ESP8266) && !defined(USE_GDOLIB)
+CommsRxDiagnostics comms_rx_diagnostics()
+{
+    return {sec2Rx.overflows, sec2Rx.maxGapMs, sec2StatusQueries,
+            sec2Refresh.hasStatus ? sec2Refresh.age(millis()) : 0,
+            sec2Refresh.hasStatus, sec2RxScheduled};
+}
+#endif
+
 void comms_loop()
 {
     if (!comms_setup_done)
@@ -3131,6 +3198,11 @@ void send_get_status()
     if (!txQueuePush(&pkt_ac))
     {
         ESP_LOGE(TAG, "packet queue full, dropping get status pkt");
+    }
+    else
+    {
+        sec2Refresh.queried(millis());
+        ++sec2StatusQueries;
     }
 }
 

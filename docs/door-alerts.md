@@ -44,6 +44,50 @@ their IDs do not collide. Notifications are emitted only on state changes;
 timers and alert transitions add no settings/flash writes.
 
 Build status: local5 firmware build passed on 2026-09-12, following the passing
-host regressions and JavaScript syntax check. The image is 802,400 bytes;
-SHA-256 `49621883830450bc50b50fa96db07c55806acbf8c49023993a010846d08652a8`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
+host regressions and JavaScript syntax check. The image is 803,472 bytes;
+SHA-256 `a93244896ceefe66b68e5ef4254c2817e22ae72ce9f6982842562ca6430be543`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
 The device continues running local4; local5 has not been flashed or tested in Home.
+
+## Missed-status recovery
+
+Local5 also services Sec+2.0 serial reception at cooperative yields, including
+HomeKit TCP waits. A fixed 2 KiB RAM queue retains bytes for the normal loop;
+the background service never transmits, decodes packets, or calls HomeKit.
+The normal loop drains one complete packet per pass, rather than one byte.
+This protects against application stalls while yields still run; it cannot
+recover edges lost during interrupt starvation or an indefinitely stalled CPU.
+
+Status queries no longer depend on another incoming packet: after five minutes
+without valid status, the controller asks the opener again. During observed
+movement or receive-loss recovery, queries can occur every five seconds. Three
+unanswered queries cause a fallback to the five-minute cadence. A valid status
+resets recovery. Queries use normal bus arbitration and never actuate the door.
+
+`/status.json` exposes `sec2RxOverflows`, `sec2RxMaxGapMs`, `sec2StatusQueries`,
+`sec2StatusAgeMs`, `sec2StatusKnown`, and `sec2BackgroundRx`. These diagnostics
+live in RAM. Overflow warnings are limited to once per minute; lost bytes reset
+the packet reader and trigger a status refresh. The background queue adds about
+2 KiB of static RAM. Allocation failure for the yield callback is logged and
+reported by `sec2BackgroundRx=false`; normal-loop reception remains available.
+
+Polling does advance the existing rolling code, which is saved every ten
+increments. Continuous silent-bus polling at five-minute intervals therefore
+adds approximately 29 rolling-code saves per day, plus bounded fast retries.
+This change does not alter rolling-code persistence or its reboot safety margin.
+The diagnostic counters and polling timers themselves cause no flash writes.
+
+The September 12 incident had a physical close around 15:45 and a reported
+Open-to-Closed transition at 15:48:47, together with Light Off. HomeKit ACK
+failures and opener decode errors were present nearby. This supports a missed
+status update but does not establish whether software stalls or wiring noise
+caused it. Host tests cover a two-second stalled consumer, queue and serial
+overflows, silent-bus polling, bounded retries, and timer rollover. Hardware
+validation of these changes is still pending.
+
+Latest OTA attempt (2026-09-12, normal-speed gzip): failed after 71.0 seconds
+with a broken pipe. The device logged a 30,001 ms idle timeout after 10,240
+received bytes (8,192 flashed, 1,661 partial), then rebooted through normal
+recovery. Post-reboot status confirmed local4, Closed, paired, opener firmware
+3.13, and unchanged crash count 1. The new local5 image is **not installed**.
+The verified 803,472-byte BIN and its 576,513-byte gzip are ready for USB;
+gzip MD5 is `6603914b682d655ae088050645112b6d`.

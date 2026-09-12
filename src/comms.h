@@ -91,3 +91,12 @@ extern struct DoorHistory closeHistory;
 
 #define openHistory(n) (openHistory.duration[(openHistory.count + DOOR_MAX_HISTORY - (n)) % DOOR_MAX_HISTORY])
 #define closeHistory(n) (closeHistory.duration[(closeHistory.count + DOOR_MAX_HISTORY - (n)) % DOOR_MAX_HISTORY])
+
+#if defined(ESP8266) && !defined(USE_GDOLIB)
+struct CommsRxDiagnostics
+{
+    uint32_t overflows, maxGapMs, statusQueries, statusAgeMs;
+    bool statusKnown, backgroundRx;
+};
+CommsRxDiagnostics comms_rx_diagnostics();
+#endif

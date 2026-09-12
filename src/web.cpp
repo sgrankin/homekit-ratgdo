@@ -852,6 +852,15 @@ void build_status_json(char *json)
     JSON_ADD_STR("userName", userConfig->getwwwUsername());
     JSON_ADD_BOOL("paired", homekit_is_paired());
     JSON_ADD_STR("firmwareVersion", std::string(AUTO_VERSION).c_str());
+#if defined(ESP8266) && !defined(USE_GDOLIB)
+    const auto rx = comms_rx_diagnostics();
+    JSON_ADD_INT("sec2RxOverflows", rx.overflows);
+    JSON_ADD_INT("sec2RxMaxGapMs", rx.maxGapMs);
+    JSON_ADD_INT("sec2StatusQueries", rx.statusQueries);
+    JSON_ADD_INT("sec2StatusAgeMs", rx.statusAgeMs);
+    JSON_ADD_BOOL("sec2StatusKnown", rx.statusKnown);
+    JSON_ADD_BOOL("sec2BackgroundRx", rx.backgroundRx);
+#endif
     JSON_ADD_STR(cfg_localIP, userConfig->getLocalIP());
     JSON_ADD_STR(cfg_subnetMask, userConfig->getSubnetMask());
     JSON_ADD_STR(cfg_gatewayIP, userConfig->getGatewayIP());
