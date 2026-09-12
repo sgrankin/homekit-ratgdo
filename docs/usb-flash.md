@@ -7,7 +7,10 @@ on 2026-09-12; write-time and independent firmware digest verification passed.
 The user stopped the new backup in favor of the existing verified recovery copy.
 The write erased only 0x00000000–0x000c3fff. Post-boot status confirmed local4,
 door Closed, retained pairing/accessory identity and unchanged crashCount (1).
-A HomeKit ACK timeout still occurred at startup; network stability is not proven.
+A HomeKit ACK timeout occurred at startup. A subsequent unrestricted gzip OTA
+reflash succeeded in 39.097 seconds, and the user reported much lower packet loss.
+Long-term stability and the cause of improvement remain unproven. See the
+[OTA investigation](ota-transfer-investigation.md).
 
 ## Physical preparation
 
@@ -22,7 +25,7 @@ fails and the USB bridge has been identified.
 The instructions below target the previously identified ESP8266 ratgdo v2.5.
 If it identifies as another chip or lacks 4 MB flash, stop and reassess the build.
 If an optional physical rotary encoder is installed, reassess first: upstream
-disabled encoder support on ESP8266 after the installed 2.2.1 release.
+disabled encoder support on ESP8266 after the original 2.2.1 baseline.
 
 ## Tool and image
 
@@ -41,7 +44,7 @@ The tool is already installed in a repository-local virtual environment. To
 recreate it: `python3 -m venv .cache/usb-tools`, then
 `.cache/usb-tools/bin/python -m pip install esptool==5.1.0`.
 
-Prepared firmware: `2.2.4-local4`, 800,624-byte file, ESP8266 image with 4 MB/DIO/
+Installed firmware: `2.2.4-local4`, 800,624-byte file, ESP8266 image with 4 MB/DIO/
 40 MHz header. Expected SHA-256:
 `7927701987d131ced0a080f51d84ae6930466d6e6b3085ae3519590611de73ad`.
 The file size includes image overhead and differs from the build's flash-usage

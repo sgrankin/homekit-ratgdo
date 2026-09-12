@@ -1,8 +1,18 @@
-# OTA transfer stalls on installed local2
+# OTA transfer investigation and local4 results
+
+## Current outcome (2026-09-12)
+
+Local4 is installed and successfully completed an unrestricted gzip OTA reflash
+in 39.097 seconds. Pairing and door state were retained. The user subsequently
+reported substantially reduced packet loss; no numeric long-duration follow-up
+sample was supplied. Keep local4 running for normal-use observation. Earlier
+failures below are historical evidence, not the current installation status.
+
+## Initial local2 attempts
 
 Two authorized uploads on 2026-09-12 failed and recovered to local2. The door
 reported closed after both; pairing remained intact and crashCount stayed at 1.
-No further upload was performed during this investigation.
+The next captured attempt is recorded separately below.
 
 | Attempt | Image bytes | Pacing | Client result |
 | --- | ---: | --- | --- |
@@ -25,7 +35,7 @@ a 5% progress message.
   buffer to our handler. Each delivery resets the idle timer, before flash
   writing. The near-exact start-to-abort interval therefore suggests neither
   transfer reached its first full-buffer callback. This is an inference: the
-  installed logging does not report partial-buffer bytes or last-progress time.
+  local2 logging did not report partial-buffer bytes or last-progress time.
 - HomeKit teardown closes its own client sockets, listener and mDNS responder.
   No global TCP stop call was found in this path. Door communication shutdown
   disables its software serial receiver and frees serial buffers.
@@ -35,7 +45,7 @@ a 5% progress message.
   guard closes that connection, allowing the parser to report ABORTED and
   normal-loop recovery to reboot. A longer curl timeout cannot override this
   device-side guard.
-- lib/lwip2/README.md documents a custom limit of two TCP retransmissions; the
+- The then-bundled lib/lwip2/README.md documented a custom limit of two TCP retransmissions; the
   standard pinned framework header defaults to twelve. This is a candidate for
   improving loss tolerance, not a demonstrated cause of these receive stalls.
   In particular, retransmitting controller data and receiving upload data are
@@ -136,7 +146,7 @@ still complete. The controller problem is not specific to the Mac's Wi-Fi leg.
 Controller radio/firmware and its particular AP/mesh path remain unresolved.
 No firmware upload or device settings change was made from atom.
 
-## Prepared local4 changes
+## Changes deployed in local4
 
 The retry-limit rationale was verified in original commits 99f1d634 and
 64e137c8: a vanished peer could retain about 4 KiB of TCP heap for about thirty
@@ -157,7 +167,7 @@ write is added. The existing recovery reboot can save the log as before.
 Host tests check the timeout record and suppress duplicates for the same stall,
 in addition to existing recovery/scheduling/rollover cases. The teardown test
 exercises the production function over 1000 vanished-peer sockets and would
-fail with graceful stop instead of abort. No device flash is part of this change.
+fail with graceful stop instead of abort. Deployment results follow.
 
 ## Local4 installation and successful OTA reflash
 

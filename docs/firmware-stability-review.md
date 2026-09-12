@@ -1,5 +1,10 @@
 # ESP8266 stability review — 2026-09-11
 
+Historical review: device versions, tool availability and unimplemented fixes
+below describe the original investigation. Local4 is now installed and has passed
+an OTA reflash; see [current fork status](local-fork.md) and
+[measured results](ota-transfer-investigation.md).
+
 Reviewed checkout `ea987e3` (v2.2.4 source), the ten tags v2.1.2–v2.2.4, and the pinned Arduino-HomeKit-ESP8266 dependency `a917a7137b7366511ecfad788f00a8540257f752`. No firmware, settings, pairing, or door operations were changed. This is a source review with limited read-only network observations, not a diagnosis from a captured device crash.
 
 ## Follow-up: supplied crash identifies post-OTA mDNS failure

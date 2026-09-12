@@ -5,6 +5,16 @@ Personal remote: `https://github.com/sgrankin/homekit-ratgdo.git` (`origin`).
 The local patch stack is tracked by the **`local` jj bookmark**. No publishing or
 physical-device update is part of the build/test workflow.
 
+## Device status (2026-09-12)
+
+Local4 is installed. USB write and independent digest verification passed, followed
+by a successful unrestricted gzip OTA reflash in 39.097 seconds. Post-OTA status
+confirmed the door closed, retained pairing/accessory identity, one HomeKit client
+and unchanged crash count (1). The user reports substantially reduced packet loss.
+Leave local4 running for normal-use observation; no local5 is currently planned.
+See the [OTA investigation](ota-transfer-investigation.md) for measured results
+and remaining uncertainty about the cause of improvement.
+
 ## Changes
 
 - OTA disables all application mDNS advertisements before HomeKit closes the shared
@@ -26,14 +36,19 @@ physical-device update is part of the build/test workflow.
 - The pinned HomeKit library has a checked local patch for event ownership,
   allocation failures, notification ordering and safe traversal when clients close.
   See [the dependency patch](../patches/homekit/README.md).
-- Default ESP8266 builds identify themselves as **`2.2.4-local3`**, derived from the
+- Standard framework TCP retries replace the custom two-retry archive. The
+  low-memory/no-fragmentation configuration is retained. HomeKit teardown aborts
+  remaining TCP state to address the original vanished-peer heap-retention concern.
+- OTA idle timeout logs parser byte counts, updater progress, TCP state, unread
+  data and heap once per stall. There is no new periodic or direct flash logging.
+- Default ESP8266 builds identify themselves as **`2.2.4-local4`**, derived from the
   upstream manifest plus `VERSION_TAG`. Increase the local suffix when preparing
   another installed build; the upstream manifest remains untouched.
 
 This fixes the decoded post-abort crash and identified memory defects. It does
-not establish why the old firmware's TCP transfers stall, or validate actual RF,
-flash or opener timing on hardware. A controller still on 2.2.1 will continue to
-use the old updater until a new image has successfully booted.
+not establish why the old firmware's TCP transfers stalled or isolate the cause
+of improved packet loss. Successful installation and one OTA transfer are not a
+long-duration RF or opener-timing test.
 
 ## Host tests (normal development loop)
 
@@ -44,7 +59,9 @@ python3 test/host/run.py
 On this Mac's current beta SDK/linker combination:
 
 ```sh
-SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk python3 test/host/run.py
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
+CXX=/Library/Developer/CommandLineTools/usr/bin/clang++ python3 test/host/run.py
 ```
 
 The first run fetches one pinned GitHub dependency into `.cache/host-homekit` and
@@ -61,8 +78,9 @@ The patch application itself is tested for clean application, idempotence and
 rejection of unexpected sources. These tests do not run the old canned mock suite.
 
 This is the recommended first testing layer, rather than attempting whole-chip
-ESP8266 emulation. Follow it with a firmware build; use a spare board disconnected
-from the opener for real Wi-Fi/OTA soak tests. Protocol replay and obstruction/
+ESP8266 emulation. Follow it with a firmware build. No spare board is available;
+any live flash or disruptive test needs explicit authorization and a closed, idle
+door. Read-only observation can continue during ordinary use. Protocol replay and obstruction/
 command state-machine tests are useful next additions; they are not yet included.
 
 ## Firmware build
@@ -100,15 +118,17 @@ checksums and build log. The GitHub workflow `host-regression.yml` also defines
 host-regression and ESP8266 build jobs. Defining that workflow is not evidence of
 an actual GitHub Actions run; local validation is separate.
 
-Validated locally on 2026-09-11: host regression tests passed with ASan/UBSan,
-including 1,000 HomeKit burst/disconnect cycles. The ARM Linux build of
-`ratgdo_esp8266_hV25` succeeded as `2.2.4-local3`, using 47,088 bytes of static RAM
-and 796,171 bytes of flash. The final build reused cached pinned dependencies;
-its recorded source hashes match the tested working tree. Firmware SHA-256:
-`14ba2de82be97d70bb39b0d9fb8a3b066498c449d0b57662cd3d071c3dcb0e97`.
-This local3 build has not been flashed or tested with live OTA. The preceding
-local2 build was installed by USB, with full backup and preserved-region
-verification; the user confirmed ordinary opening/closing afterward.
+Validated locally on 2026-09-12: host regressions passed with ASan/UBSan,
+including 1,000 HomeKit burst/disconnect cycles, 1,000 teardown cycles, bounded
+write/ACK handling and one-time OTA timeout diagnostics. The ARM Linux build of
+`ratgdo_esp8266_hV25` succeeded as `2.2.4-local4`, using 47,200 bytes of static RAM
+and 796,475 bytes of flash (800,624-byte image). The verbose link command confirms
+the framework's `lwip2-536` library with `LWIP_FEATURES=0`, without the custom
+library search path. Firmware SHA-256:
+`7927701987d131ced0a080f51d84ae6930466d6e6b3085ae3519590611de73ad`.
+Keep its matching ELF for crash decoding. The original verified pre-local2 backup
+remains the recovery copy; the user requested stopping the new pre-local4 backup.
+A full backup must not be restored blindly after opener rolling codes advance.
 
 ## Updating from upstream with jj
 

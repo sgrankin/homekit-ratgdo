@@ -13,6 +13,7 @@ as of this review. The library pin alone cannot supply these fixes.
 - saves the next client before processing can free the current client;
 - retries unsent HomeKit bytes within a budget and confirms acknowledgement before
   source-buffer reuse; aborts failed streams to release borrowed storage;
+- aborts sockets on teardown so vanished peers do not retain TCP buffers;
 - logs a bounded recovery/failure summary; see
   [transport review](../../docs/wifi-release-review.md) and
   [diagnostic fields](../../docs/homekit-write-diagnostics.md).

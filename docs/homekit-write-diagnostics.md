@@ -1,6 +1,6 @@
 # HomeKit write diagnostics
 
-## local3 transport changes
+## Current diagnostics (local3 changes, deployed in local4)
 
 The original `HKTX short` example below is from local2. In local3, temporary short
 writes are retried with the same bytes. `HKTX recovered` is emitted at most once
@@ -15,11 +15,16 @@ expanded record compact. Further sends on the failed context produce no cascade
 of socket-closed messages. See the [release and transport review](wifi-release-review.md)
 for retry budgets, ACK ownership and remaining limitations.
 
-## local2 diagnostic baseline
+Local4 additionally aborts sockets on teardown and emits one `OTA idle timeout`
+record with receive counts and socket state. See the
+[OTA field descriptions](ota-transfer-investigation.md#changes-deployed-in-local4).
+These use the existing logger; a controlled reboot may save its log as before.
 
-A failed write now produces one `HKTX short` error record before the library
+## Historical local2 diagnostic baseline
+
+In local2, a failed write produced one `HKTX short` error record before the library
 closes its socket. Successful writes produce no additional log records. The
-existing timeout and disconnect policy is unchanged. No request body, query
+then-existing timeout and disconnect policy was unchanged. No request body, query
 string, pairing identifier, encryption key or payload is included.
 
 Example from the host regression (not a hardware observation):

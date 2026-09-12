@@ -52,7 +52,7 @@ about 1,447 ms. Lights are off; other devices are not exhibiting the problem.
 This does not establish the TCP loss rate or distinguish localized RF, mesh path,
 firmware scheduling and network-stack behavior.
 
-Installed 2.2.4-local2 captured an encrypted accessory-list response accepting
+The previously installed 2.2.4-local2 captured an encrypted accessory-list response accepting
 421/536 bytes in 1,121 ms while TCP remained ESTABLISHED. Send capacity recovered
 from 421 to 1,072 bytes before the library closed the connection. Free heap was
 21,000 bytes, largest block 17,136, fragmentation 18%. Separately, the hub sometimes
@@ -79,5 +79,10 @@ exercise the production send functions with deferred reads of borrowed buffers,
 partial/zero writes, peer close, ACK failure, clock wrap and encryption-call/nonce
 continuity. They do not establish real RF performance.
 
-No Wi-Fi channel, PHY, transmit power, sleep or lwIP retry setting is changed.
-The prepared change is not installed on the controller until a separate flash.
+The local3 send change itself did not change radio settings or lwIP retries.
+It is now deployed as part of local4, which additionally restores standard TCP
+retries and aborts HomeKit sockets on teardown. The original two-retry setting
+addressed vanished-peer heap retention; see [the rationale](../lib/lwip2/README.md).
+Local4 passed USB installation and an unrestricted gzip OTA reflash. The user
+reports markedly reduced packet loss. The firmware, reboot and USB/power context
+changed, so attribution remains uncertain. See [current results](ota-transfer-investigation.md).
