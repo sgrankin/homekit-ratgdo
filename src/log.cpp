@@ -239,9 +239,9 @@ void LOG::logToBuffer(const char *fmt, va_list args)
     size_t len = strlen(lineBuffer);
     size_t available = sizeof(msgBuffer->buffer) - msgBuffer->head;
     memcpy(&msgBuffer->buffer[msgBuffer->head], lineBuffer, min(available, len));
-    if (available < len)
+    if (available <= len)
     {
-        // we wrapped on the available buffer space
+        // Exact fills must wrap too: the terminating NUL needs a valid slot.
         msgBuffer->wrapped = 1;
         msgBuffer->head = len - available;
         memcpy(msgBuffer->buffer, &lineBuffer[available], msgBuffer->head);

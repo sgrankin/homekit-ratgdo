@@ -39,6 +39,13 @@ def main():
                   "--ld-path=" + subprocess.check_output(["xcrun", "--find", "ld"], text=True).strip()]
     with tempfile.TemporaryDirectory(prefix="ratgdo-host-") as tmp:
         tmp = Path(tmp)
+        log_header = (ROOT / "lib/ratgdo/log.h").read_text()
+        log_struct = log_header[log_header.index("typedef struct logBuffer"):log_header.index("} logBuffer;") + len("} logBuffer;")]
+        log_source = (ROOT / "src/log.cpp").read_text()
+        log_append = log_source[log_source.index("    size_t len = strlen(lineBuffer);"):log_source.index("    static bool inFn = false;")]
+        (tmp / "log_buffer.inc").write_text(log_struct + "\nvoid append(logBuffer *msgBuffer, const char *lineBuffer) {\n" + log_append + "\n}\n")
+        run(compiler + flags + ["-I", tmp, ROOT / "test/host/log_buffer.cpp", "-o", tmp / "log_buffer"])
+        run([tmp / "log_buffer"])
         run(compiler + flags + ["-I", ROOT / "src", ROOT / "test/host/sec2_rx.cpp", "-o", tmp / "sec2_rx"])
         run([tmp / "sec2_rx"])
         (tmp / "close_timeout.inc").write_text(function((ROOT / "src/comms.cpp").read_text(), "void close_completion_timeout()"))
