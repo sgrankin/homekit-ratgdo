@@ -32,16 +32,28 @@ int main(int argc, char **argv)
     assert(current_door_state.id == 10 && target_door_state.id == 11);
     assert(garage_left_open.id == 102 && garage_close_failed.id == 112);
     assert(garage_left_open.value.uint8_value == 0 && garage_close_failed.value.uint8_value == 0);
-    assert(config.config_number == 5);
+    assert(config.config_number == 6);
     std::set<unsigned> ids;
-    unsigned contacts = 0;
+    unsigned contacts = 0, configured_names = 0;
     for (auto **service = config.accessories[0]->services; *service; ++service)
     {
         assert(ids.insert((*service)->id).second);
         if (!strcmp((*service)->type, HOMEKIT_SERVICE_CONTACT_SENSOR))
             ++contacts;
         for (auto **ch = (*service)->characteristics; *ch; ++ch)
+        {
             assert(ids.insert((*ch)->id).second);
+            if (!strcmp((*ch)->type, HOMEKIT_CHARACTERISTIC_CONFIGURED_NAME))
+            {
+                ++configured_names;
+                bool left_open = (*service)->id == 100;
+                assert(left_open || (*service)->id == 110);
+                assert((*ch)->id == (left_open ? 103 : 113));
+                assert(!strcmp((*ch)->value.string_value,
+                    left_open ? "Garage Left Open" : "Garage Close Failed"));
+                assert((*ch)->permissions == homekit_permissions_paired_read);
+            }
+        }
     }
-    assert(contacts == 2);
+    assert(contacts == 2 && configured_names == 2);
 }

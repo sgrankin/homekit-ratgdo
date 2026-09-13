@@ -15,7 +15,10 @@ time already elapsed in this boot, including time while the alert was disabled.
 
 Enable each sensor's notifications separately in Apple Home after installation.
 The two services have fixed IDs, existing service IDs are preserved, and the HAP
-configuration number advances to 5 so paired clients can refresh the layout.
+configuration number is 6 so paired clients can refresh the layout. Each sensor
+exposes both Name and a read-only Configured Name with the labels above. This
+avoids accepting name writes that would disappear on reboot. Existing Apple
+Home names may remain cached; presentation still needs confirmation in Home.
 Pairing storage is unchanged. Actual Home presentation/notification delivery
 still requires verification on the installed firmware and the user's hub.
 
@@ -44,8 +47,8 @@ their IDs do not collide. Notifications are emitted only on state changes;
 timers and alert transitions add no settings/flash writes.
 
 Build status: local5 firmware build passed on 2026-09-12, following the passing
-host regressions and JavaScript syntax check. The latest image is 803,568 bytes;
-SHA-256 `a3c49f238e6de31a160a09b18956f58324c022b8383ba906d234c819b438889a`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
+host regressions and JavaScript syntax check. The latest image is 803,824 bytes;
+SHA-256 `1e82822cb76da94dbebd7f73b777a352ca4968e03176180c203950a7406e5ca0`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
 Installed by OTA on 2026-09-13 under laptop USB power; see the deployment comparison below. Apple Home sensor presentation and notifications still need user verification.
 
 ## Missed-status recovery
@@ -89,8 +92,8 @@ with a broken pipe. The device logged a 30,001 ms idle timeout after 10,240
 received bytes (8,192 flashed, 1,661 partial), then rebooted through normal
 recovery. Post-reboot status confirmed local4, Closed, paired, opener firmware
 3.13, and unchanged crash count 1. At that point the new local5 image was not installed (later deployed below).
-The latest 803,568-byte BIN and its 576,573-byte gzip are ready for USB;
-gzip MD5 is `db719c0f8a01f14b1f44f40ea9bac85f`.
+The latest 803,824-byte BIN and its 576,623-byte gzip are ready for USB;
+gzip MD5 is `0f4b659f6b294855dbe75ab6062a7c11`.
 
 ## Verification upload timeout
 
@@ -193,3 +196,19 @@ the final verification response, disconnected, retried immediately, and verified
 on the second connection. Subsequent status showed one client. We have not yet
 identified why the ACK is absent. No SSE subscriptions were active; heartbeat
 callbacks are therefore not an explanation for this observed failure.
+
+### Sensor naming follow-up (2026-09-13)
+
+Apple Home displayed both contact sensors using the accessory name despite
+their distinct Name characteristics. Added read-only Configured Name labels
+with IDs 103/113 and advanced the HAP configuration number to 6. Existing
+service/state IDs and pairing storage are unchanged. Host layout checks pass
+for all four light/motion combinations; the complete host suite and offline
+ESP8266 build pass.
+
+Normal-speed OTA under laptop USB power succeeded in 25.922 seconds; device
+and gateway pings both received 26/26 replies. After the requested reboot,
+mDNS advertises c#=6 with the same accessory ID and paired flag. Status reports
+Closed, paired, two HomeKit clients and zero receive overflows at 29 seconds
+uptime. Apple Home's rendering of the updated names still needs user confirmation;
+it may retain names already cached in the Home database.

@@ -100,12 +100,18 @@ homekit_accessory_t *accessories[] = {
         HOMEKIT_SERVICE(CONTACT_SENSOR, .id = 100, .characteristics = (homekit_characteristic_t *[])
         {
             HOMEKIT_CHARACTERISTIC(NAME, "Garage Left Open", .id = 101),
+            // Fixed service label; do not accept volatile name writes that vanish on reboot.
+            HOMEKIT_CHARACTERISTIC(CONFIGURED_NAME, "Garage Left Open", .id = 103,
+                .permissions = homekit_permissions_paired_read),
             &garage_left_open,
             NULL
         }),
         HOMEKIT_SERVICE(CONTACT_SENSOR, .id = 110, .characteristics = (homekit_characteristic_t *[])
         {
             HOMEKIT_CHARACTERISTIC(NAME, "Garage Close Failed", .id = 111),
+            // Fixed service label; do not accept volatile name writes that vanish on reboot.
+            HOMEKIT_CHARACTERISTIC(CONFIGURED_NAME, "Garage Close Failed", .id = 113,
+                .permissions = homekit_permissions_paired_read),
             &garage_close_failed,
             NULL
         }),
@@ -117,5 +123,5 @@ homekit_accessory_t *accessories[] = {
 // Overall HomeKit server config
 homekit_server_config_t config  = {
     .accessories = accessories,
-    .config_number = 5, // New contact services; keep pairing and existing IDs.
+    .config_number = 6, // Configured sensor names; keep pairing and existing IDs.
 };
