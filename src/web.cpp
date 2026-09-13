@@ -994,6 +994,22 @@ void build_status_json(char *json)
     JSON_ADD_BOOL(cfg_motionHomeKit, userConfig->getMotionHomeKit());
     JSON_ADD_BOOL(cfg_stopDoorHomeKit, userConfig->getStopDoorHomeKit());
 #endif
+    // Count locally tracked sockets, not a liveness probe of each browser.
+    uint32_t sseConnected = 0, sseLogViewers = 0, sseHeartbeats = 0;
+    for (auto &s : subscription)
+    {
+        if (!s.SSEconnected || !s.client.connected())
+            continue;
+        ++sseConnected;
+        if (s.logViewer)
+            ++sseLogViewers;
+        if (s.heartbeatInterval)
+            ++sseHeartbeats;
+    }
+    JSON_ADD_INT("sseSubscriptions", subscriptionCount);
+    JSON_ADD_INT("sseConnected", sseConnected);
+    JSON_ADD_INT("sseLogViewers", sseLogViewers);
+    JSON_ADD_INT("sseHeartbeats", sseHeartbeats);
     JSON_ADD_INT("webRequests", request_count);
     JSON_ADD_INT("webMaxResponseTime", max_response_time);
     JSON_ADD_INT("ttcActive", is_ttc_active());
