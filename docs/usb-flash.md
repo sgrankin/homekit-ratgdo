@@ -44,9 +44,9 @@ The tool is already installed in a repository-local virtual environment. To
 recreate it: `python3 -m venv .cache/usb-tools`, then
 `.cache/usb-tools/bin/python -m pip install esptool==5.1.0`.
 
-Prepared firmware: `2.2.4-local5`, 803,824-byte file, ESP8266 image with 4 MB/DIO/
+Prepared firmware: `2.2.4-local5`, 803,504-byte file, ESP8266 image with 4 MB/DIO/
 40 MHz header. Expected SHA-256:
-`1e82822cb76da94dbebd7f73b777a352ca4968e03176180c203950a7406e5ca0`.
+`a58ef006a63b9c145713d631265009548ed2e572debb05c548a1fba80f5f8220`.
 The file size includes image overhead and differs from the build's flash-usage
 figure. Keep its matching `.cache/firmware/firmware.elf` for crash decoding.
 

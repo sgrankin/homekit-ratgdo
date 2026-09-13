@@ -46,10 +46,12 @@ light/motion service combinations, checking both contact services survive and
 their IDs do not collide. Notifications are emitted only on state changes;
 timers and alert transitions add no settings/flash writes.
 
-Build status: local5 firmware build passed on 2026-09-12, following the passing
-host regressions and JavaScript syntax check. The latest image is 803,824 bytes;
-SHA-256 `1e82822cb76da94dbebd7f73b777a352ca4968e03176180c203950a7406e5ca0`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
-Installed by OTA on 2026-09-13 under laptop USB power; see the deployment comparison below. Apple Home sensor presentation and notifications still need user verification.
+Build status: the latest local5 firmware build and host regressions passed on
+2026-09-13. The latest image is 803,504 bytes;
+SHA-256 `a58ef006a63b9c145713d631265009548ed2e572debb05c548a1fba80f5f8220`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
+This image includes the SSE cleanup below, installed by OTA on 2026-09-13
+under charger power with the added choke. The preceding sensor-name build
+was installed under laptop USB power. Apple Home sensor presentation and notifications still need user verification.
 
 ## Missed-status recovery
 
@@ -84,16 +86,16 @@ Open-to-Closed transition at 15:48:47, together with Light Off. HomeKit ACK
 failures and opener decode errors were present nearby. This supports a missed
 status update but does not establish whether software stalls or wiring noise
 caused it. Host tests cover a two-second stalled consumer, queue and serial
-overflows, silent-bus polling, bounded retries, and timer rollover. Hardware
-validation of these changes is still pending.
+overflows, silent-bus polling, bounded retries, and timer rollover. The changes
+are now installed; long-term recovery behavior still needs observation.
 
-Latest OTA attempt (2026-09-12, normal-speed gzip): failed after 71.0 seconds
+Earlier OTA attempt (2026-09-12, normal-speed gzip): failed after 71.0 seconds
 with a broken pipe. The device logged a 30,001 ms idle timeout after 10,240
 received bytes (8,192 flashed, 1,661 partial), then rebooted through normal
 recovery. Post-reboot status confirmed local4, Closed, paired, opener firmware
 3.13, and unchanged crash count 1. At that point the new local5 image was not installed (later deployed below).
-The latest 803,824-byte BIN and its 576,623-byte gzip are ready for USB;
-gzip MD5 is `0f4b659f6b294855dbe75ab6062a7c11`.
+The latest 803,504-byte BIN and its 576,487-byte gzip are ready for USB;
+gzip MD5 is `d164c7a84d5b03d6d335527e9d8bfd0d`.
 
 ## Verification upload timeout
 
@@ -125,14 +127,14 @@ pending connections), `sseConnected` (SSE flag and locally connected socket),
 `sseLogViewers` (connected log viewers), and `sseHeartbeats` (connected streams
 with heartbeats enabled). Counts are snapshots, not browser liveness probes;
 a broken peer may remain counted until TCP detects it. The existing `clients`
-field counts HomeKit connections, not SSE. These fields require the new image.
+field counts HomeKit connections, not SSE. These fields are present in the
+installed local5 image.
 
 The main web panel requests a default one-second heartbeat; the log viewer
 explicitly disables heartbeats but receives synchronous broadcasts per log line.
-The existing heartbeat uses a scheduled recurrent callback to build small JSON,
-flush/write its socket, and yield. That conflicts with the scheduler's restriction
-against yielding or long-running work in recurrent callbacks. The current change
-adds observability; moving heartbeat I/O out of that context is still pending.
+The old heartbeat used a scheduled recurrent callback to build small JSON,
+flush/write its socket, and yield, conflicting with the scheduler's restrictions.
+The installed ESP8266 cleanup moves that work into web_loop(), as detailed below.
 
 
 ## USB power comparison and deployment, 2026-09-13
@@ -191,7 +193,7 @@ pairing storage is corrupt. The library also emits Client verified after its
 final verification response send fails, so that message alone does not prove
 that the controller received the response.
 
-On the latest boot, Apple TV .155 encountered one 2-second ACK timeout sending
+On the status-buffer-fix boot, Apple TV .155 encountered one 2-second ACK timeout sending
 the final verification response, disconnected, retried immediately, and verified
 on the second connection. Subsequent status showed one client. We have not yet
 identified why the ACK is absent. No SSE subscriptions were active; heartbeat
@@ -212,3 +214,38 @@ mDNS advertises c#=6 with the same accessory ID and paired flag. Status reports
 Closed, paired, two HomeKit clients and zero receive overflows at 29 seconds
 uptime. Apple Home's rendering of the updated names still needs user confirmation;
 it may retain names already cached in the Home database.
+
+### SSE heartbeat cleanup (installed 2026-09-13)
+
+ESP8266 dashboard heartbeats now run from web_loop(), replacing per-client
+Ticker callbacks that scheduled TCP writes and yields inside a recurrent
+callback. The ESP8266 core explicitly forbids blocking work and yield/delay
+inside those callbacks. A round-robin scan sends at most one due heartbeat per
+loop pass, skips disabled/disconnected streams, and coalesces missed intervals.
+Heartbeats pause while OTA services are stopped. Individual writes retain the
+existing socket timeout; this change does not make all web writes nonblocking.
+ESP32 retains its existing timer path.
+
+The host test exercises the production scheduler for fairness, disabled and
+disconnected streams, long pauses, OTA suspension, removal during a send, and
+32-bit millisecond wrap. The full host suite and offline ESP8266 build pass.
+Before installing this cleanup, the first 60-ping sample after adding the choke had no loss, 45.424 ms average latency
+and 186.080 ms maximum; the gateway also had no loss. This short sample does
+not isolate the choke as the cause of the improvement.
+
+The user then requested deployment of the heartbeat cleanup. Normal-speed OTA
+under charger power with the choke succeeded in 79.840 seconds (HTTP 200,
+Upload Success), followed by an explicit reboot to activate it. During upload,
+ratgdo received 58/80 pings (27.5% loss), average 103.221 ms and maximum
+643.736 ms; the gateway received 80/80. Thus the earlier zero-loss idle result
+does not establish loss-free operation during OTA under charger power.
+
+At 77 seconds uptime after activation, status reported Closed, paired, one
+HomeKit client, -53 dBm, zero receive overflows and unchanged crash count 1.
+The first 60-ping sample spanning startup received 50/60 (16.7% loss), with
+loss concentrated earlier in the sample; its final 29 replies were consecutive.
+The concurrent gateway sample received 60/60.
+
+A subsequent settled sample received 28/30 pings (6.7% loss), averaging
+46.492 ms with a 186.489 ms maximum. Some loss therefore remains after startup;
+the choke may help, but the earlier zero-loss sample was not a lasting guarantee.

@@ -52,6 +52,9 @@ def main():
         run(compiler + flags + ["-I", ROOT / "src", "-I", tmp, ROOT / "test/host/door_alerts.cpp", "-o", tmp / "door_alerts"])
         run([tmp / "door_alerts"])
         source = (ROOT / "src/web.cpp").read_text()
+        (tmp / "sse_heartbeat.inc").write_text(function(source, "static void serviceSSEheartbeats()"))
+        run(compiler + flags + ["-I", tmp, ROOT / "test/host/sse_heartbeat.cpp", "-o", tmp / "sse_heartbeat"])
+        run([tmp / "sse_heartbeat"])
         handlers = function(source, "void announce_mdns()")
         handlers += "\n" + source[source.index("#ifdef ESP8266\nstatic bool uploadTimeoutLogged"):]
         (tmp / "ota_handlers.inc").write_text(handlers)

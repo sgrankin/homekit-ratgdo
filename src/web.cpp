@@ -192,7 +192,11 @@ struct SSESubscription
 {
     IPAddress clientIP;
     WiFiClient client;
+#ifdef ESP8266
+    uint32_t lastHeartbeatMs;
+#else
     Ticker heartbeatTimer;
+#endif
     uint32_t heartbeatInterval;
     bool SSEconnected;
     int SSEfailCount;
@@ -203,6 +207,9 @@ SSESubscription subscription[SSE_MAX_CHANNELS];
 // During firmware update note which subscribed client is updating
 SSESubscription *firmwareUpdateSub = NULL;
 uint32_t subscriptionCount = 0;
+#ifdef ESP8266
+static void serviceSSEheartbeats();
+#endif
 
 // Performance management - removed redundant connection tracking
 #define MIN_REQUEST_INTERVAL_MS 100
@@ -492,6 +499,9 @@ void web_loop()
         mdnsDoorUpdateAt = lastDoorUpdateAt;
         mdnsUpdatePending = true;
     }
+#ifdef ESP8266
+    serviceSSEheartbeats();
+#endif
     // Rate limiting - minimum interval between requests
     _millis_t current_time = _millis();
     if (current_time - last_request_time < MIN_REQUEST_INTERVAL_MS)
@@ -1444,7 +1454,9 @@ void removeSSEsubscription(SSESubscription *s)
 {
     if (subscriptionCount > 0)
         subscriptionCount--; // Prevent negative count
+#ifndef ESP8266
     s->heartbeatTimer.detach();
+#endif
     ESP_LOGD(TAG, "Remove SSE subscription. Total subscribed: %d", subscriptionCount);
     s->client.stop();
     s->clientIP = INADDR_NONE;
@@ -1523,6 +1535,32 @@ void SSEheartbeat(SSESubscription *s)
     }
 }
 
+#ifdef ESP8266
+static void serviceSSEheartbeats()
+{
+    if (!otaSession.servicesRunning())
+        return;
+
+    // Network writes can yield. Keep them in loop context, never in a recurrent
+    // callback, and send at most one heartbeat per pass so other work can run.
+    static unsigned nextChannel = 0;
+    const uint32_t now = millis();
+    for (unsigned checked = 0; checked < SSE_MAX_CHANNELS; ++checked)
+    {
+        SSESubscription &s = subscription[nextChannel];
+        nextChannel = (nextChannel + 1) % SSE_MAX_CHANNELS;
+        if (!s.clientIP || !s.SSEconnected || !s.heartbeatInterval)
+            continue;
+        if (uint32_t(now - s.lastHeartbeatMs) < s.heartbeatInterval * 1000)
+            continue;
+        // Coalesce missed intervals instead of catching up after a long stall.
+        s.lastHeartbeatMs = now;
+        SSEheartbeat(&s);
+        return;
+    }
+}
+#endif
+
 void SSEHandler(uint32_t channel)
 {
     if (server.args() != 1)
@@ -1545,23 +1583,15 @@ void SSEHandler(uint32_t channel)
     server.sendContent_P(PSTR("HTTP/1.1 200 OK\nContent-Type: text/event-stream;\nConnection: keep-alive\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n\n"));
     s.SSEconnected = true;
     s.SSEfailCount = 0;
+#ifdef ESP8266
+    s.lastHeartbeatMs = millis();
+#else
     if (s.heartbeatInterval)
     {
         s.heartbeatTimer.attach_ms(s.heartbeatInterval * 1000, [&s]
-                                   {
-#ifdef ESP8266
-                                       schedule_recurrent_function_us([&s]()
-                                                                      {
-                                                                          SSEheartbeat(&s);
-                                                                          return false; // run the fn only once
-                                                                      },
-                                                                      0); // zero micro seconds (run asap)
-#else
-                                       SSEheartbeat(&s);
-                                       return;
-#endif
-                                   });
+                                   { SSEheartbeat(&s); });
     }
+#endif
     ESP_LOGD(TAG, "Client %s (%s) listening for SSE events on channel %d", s.client.remoteIP().toString().c_str(), s.clientUUID.c_str(), channel);
 }
 
@@ -1692,7 +1722,9 @@ void handle_subscribe()
     // Safe assignment with validation
     subscription[channel].clientIP = clientIP;
     subscription[channel].client = client;
+#ifndef ESP8266
     subscription[channel].heartbeatTimer = Ticker();
+#endif
     subscription[channel].SSEconnected = false;
     subscription[channel].SSEfailCount = 0;
     subscription[channel].clientUUID = server.arg(id);
