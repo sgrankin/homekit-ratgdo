@@ -11,7 +11,7 @@ Local4 is installed. USB write and independent digest verification passed, follo
 by a successful unrestricted gzip OTA reflash in 39.097 seconds. Post-OTA status
 confirmed the door closed, retained pairing/accessory identity, one HomeKit client
 and unchanged crash count (1). The user reports substantially reduced packet loss.
-Local5 adds two [door alert sensors](door-alerts.md), cooperative Sec+2.0 receive buffering, RAM diagnostics, and bounded status refresh. Its firmware build and host regressions passed. The controller still runs local4: the latest local5 OTA stalled and recovered normally. The verified image is ready for USB; see [deployment evidence](door-alerts.md#missed-status-recovery).
+Local5 adds two [door alert sensors](door-alerts.md), cooperative Sec+2.0 receive buffering, RAM diagnostics, and bounded status refresh. Its firmware build and host regressions passed. Local5 was installed successfully by OTA on 2026-09-13 while powered from the battery laptop over USB. Charger-powered attempts stalled; see [the power comparison and remaining limitations](door-alerts.md#usb-power-comparison-and-deployment-2026-09-13).
 See the [OTA investigation](ota-transfer-investigation.md) for measured results
 and remaining uncertainty about the cause of improvement.
 

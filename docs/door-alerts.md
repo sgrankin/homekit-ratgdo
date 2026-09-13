@@ -46,7 +46,7 @@ timers and alert transitions add no settings/flash writes.
 Build status: local5 firmware build passed on 2026-09-12, following the passing
 host regressions and JavaScript syntax check. The image is 803,536 bytes;
 SHA-256 `cffa2b1190e5575fbe2d5e34a8d60f93f16eae6848069f229ddc737d5bbcd088`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
-The device continues running local4; local5 has not been flashed or tested in Home.
+Installed by OTA on 2026-09-13 under laptop USB power; see the deployment comparison below. Apple Home sensor presentation and notifications still need user verification.
 
 ## Missed-status recovery
 
@@ -88,7 +88,7 @@ Latest OTA attempt (2026-09-12, normal-speed gzip): failed after 71.0 seconds
 with a broken pipe. The device logged a 30,001 ms idle timeout after 10,240
 received bytes (8,192 flashed, 1,661 partial), then rebooted through normal
 recovery. Post-reboot status confirmed local4, Closed, paired, opener firmware
-3.13, and unchanged crash count 1. The new local5 image is **not installed**.
+3.13, and unchanged crash count 1. At that point the new local5 image was not installed (later deployed below).
 The verified 803,536-byte BIN and its 576,560-byte gzip are ready for USB;
 gzip MD5 is `2ba27fdde8a2df2147c4887ae15c8cdc`.
 
@@ -130,3 +130,41 @@ The existing heartbeat uses a scheduled recurrent callback to build small JSON,
 flush/write its socket, and yield. That conflicts with the scheduler's restriction
 against yielding or long-running work in recurrent callbacks. The current change
 adds observability; moving heartbeat I/O out of that context is still pending.
+
+
+## USB power comparison and deployment, 2026-09-13
+
+User clarified that USB supplies ratgdo from a battery-powered laptop; otherwise
+it uses an AC-mains iPhone charger. Supply noise, voltage/cable losses and ground
+coupling therefore differ. The comparison did not change power alone: RSSI
+improved from approximately -59 to -50 dBm on the same BSSID, and opening the
+serial port appears to have reset local4 despite configuring DTR/RTS inactive.
+Physical door was confirmed closed; no actuator commands were sent.
+
+Before changing firmware, local4 completed a receive-only upload in 13.019 s:
+13/13 controller and gateway pings succeeded. This contrasts with the earlier
+60-second receive-only stall and 75% controller ping loss on charger power.
+Idle USB baseline was 14/15 replies, average 56.5 ms.
+
+Actual local5 OTA then succeeded in 46.011 s, uploading all 576,560 compressed
+bytes with device-side completion and HTTP 200. Controller ping loss was 19.6%
+(37/46 replies), gateway 0%. An explicit POST /reboot activated local5.
+The installed BIN is 803,536 bytes, SHA-256
+`cffa2b1190e5575fbe2d5e34a8d60f93f16eae6848069f229ddc737d5bbcd088`.
+
+Post-boot status confirms local5, Closed, paired, crash count 1, background RX
+active, zero RX overflows, and zero SSE subscriptions. Startup HomeKit reconnect
+churn still occurred; after 104 s, free heap was 18,744 bytes and clients 1.
+Maximum RX-service gap was 1,485 ms (includes startup). Opener firmware remained
+000.000 and pin-based obstruction detection inactive. Stability is not proven.
+
+A further diagnostic limitation surfaced: the 2,048-byte status buffer drops
+trailing fields; sseSubscriptions was present, but the other SSE counters and
+trailing web counters were omitted. The serializer retained valid JSON and
+logged a capacity warning. Status capacity needs correction in a follow-up.
+
+Evidence is saved under /tmp/ratgdo-usb-power-serial.log,
+/tmp/ratgdo-ota-retry-usb-power-*, /tmp/ratgdo-ota-retry-usb-power-flash-*, and
+/tmp/ratgdo-local5-usb-*. This comparison strengthens a power/setup-dependent
+hypothesis but cannot distinguish charger noise from signal/placement effects
+or a fresh reset. It does not establish that software issues are resolved.
