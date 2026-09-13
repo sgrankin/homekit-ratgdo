@@ -242,9 +242,6 @@ extern GarageDoor garage_door;
 extern GarageDoor last_reported_garage_door;
 
 // JSON response caching
-#ifdef ESP8266
-#define STATUS_JSON_BUFFER_SIZE (256 * 8)
-#else
+// Receive/SSE diagnostics exceed the former ESP8266 2 KiB response buffer.
 #define STATUS_JSON_BUFFER_SIZE (256 * 10)
-#endif
 extern char *status_json;

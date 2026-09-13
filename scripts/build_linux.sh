@@ -15,7 +15,7 @@ pio run -e ratgdo_esp8266_hV25 -j 2 -v > /artifacts/build.log 2>&1 || {
     tail -80 /artifacts/build.log
     exit 1
 }
-sha256sum src/log.cpp lib/ratgdo/log.h src/ota_session.h src/door_alerts.h src/sec2_rx.h src/comms.cpp src/homekit.cpp src/homekit_decl.c src/web.cpp platformio.ini patches/homekit/event-ownership.patch > /artifacts/source.sha256
+sha256sum src/ratgdo.h src/log.cpp lib/ratgdo/log.h src/ota_session.h src/door_alerts.h src/sec2_rx.h src/comms.cpp src/homekit.cpp src/homekit_decl.c src/web.cpp platformio.ini patches/homekit/event-ownership.patch > /artifacts/source.sha256
 cp .pio/build/ratgdo_esp8266_hV25/firmware.bin .pio/build/ratgdo_esp8266_hV25/firmware.elf /artifacts/
 cd /artifacts
 md5sum firmware.bin > firmware.md5

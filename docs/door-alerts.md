@@ -44,8 +44,8 @@ their IDs do not collide. Notifications are emitted only on state changes;
 timers and alert transitions add no settings/flash writes.
 
 Build status: local5 firmware build passed on 2026-09-12, following the passing
-host regressions and JavaScript syntax check. The image is 803,536 bytes;
-SHA-256 `cffa2b1190e5575fbe2d5e34a8d60f93f16eae6848069f229ddc737d5bbcd088`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
+host regressions and JavaScript syntax check. The latest image is 803,568 bytes;
+SHA-256 `a3c49f238e6de31a160a09b18956f58324c022b8383ba906d234c819b438889a`. Matching BIN, ELF, gzip and build log are in `.cache/firmware`.
 Installed by OTA on 2026-09-13 under laptop USB power; see the deployment comparison below. Apple Home sensor presentation and notifications still need user verification.
 
 ## Missed-status recovery
@@ -89,8 +89,8 @@ with a broken pipe. The device logged a 30,001 ms idle timeout after 10,240
 received bytes (8,192 flashed, 1,661 partial), then rebooted through normal
 recovery. Post-reboot status confirmed local4, Closed, paired, opener firmware
 3.13, and unchanged crash count 1. At that point the new local5 image was not installed (later deployed below).
-The verified 803,536-byte BIN and its 576,560-byte gzip are ready for USB;
-gzip MD5 is `2ba27fdde8a2df2147c4887ae15c8cdc`.
+The latest 803,568-byte BIN and its 576,573-byte gzip are ready for USB;
+gzip MD5 is `db719c0f8a01f14b1f44f40ea9bac85f`.
 
 ## Verification upload timeout
 
@@ -161,10 +161,35 @@ Maximum RX-service gap was 1,485 ms (includes startup). Opener firmware remained
 A further diagnostic limitation surfaced: the 2,048-byte status buffer drops
 trailing fields; sseSubscriptions was present, but the other SSE counters and
 trailing web counters were omitted. The serializer retained valid JSON and
-logged a capacity warning. Status capacity needs correction in a follow-up.
+logged a capacity warning. This was corrected by the subsequent status-capacity deployment below.
 
 Evidence is saved under /tmp/ratgdo-usb-power-serial.log,
 /tmp/ratgdo-ota-retry-usb-power-*, /tmp/ratgdo-ota-retry-usb-power-flash-*, and
 /tmp/ratgdo-local5-usb-*. This comparison strengthens a power/setup-dependent
 hypothesis but cannot distinguish charger noise from signal/placement effects
 or a fresh reset. It does not establish that software issues are resolved.
+
+
+## Status capacity correction and HomeKit observation
+
+The ESP8266 status buffer is now 2,560 bytes (+512 bytes). Firmware rebuilt with
+host regressions passing and deployed by OTA under USB power in 31.725 s; ping
+loss during transfer was 6.2% (30/32 replies), gateway 0%. Post-boot HTTP status
+was 2,146 bytes and contained all four SSE counters plus webRequests,
+webMaxResponseTime and ttcActive. All SSE counts were zero. It reported Closed,
+GDO firmware 3.13, background RX enabled, zero overflows, clients 1 and free heap
+18,784 bytes at uptime 60 s.
+
+The earlier startup burst involved six controller addresses (.150 through .155).
+Two connections (.151 and .155) supplied the same absent pairing identifier,
+causing authentication rejection. Separate sends timed out waiting for TCP ACKs
+and were aborted by ratgdo. Those are distinct failure paths, not proof that
+pairing storage is corrupt. The library also emits Client verified after its
+final verification response send fails, so that message alone does not prove
+that the controller received the response.
+
+On the latest boot, Apple TV .155 encountered one 2-second ACK timeout sending
+the final verification response, disconnected, retried immediately, and verified
+on the second connection. Subsequent status showed one client. We have not yet
+identified why the ACK is absent. No SSE subscriptions were active; heartbeat
+callbacks are therefore not an explanation for this observed failure.
